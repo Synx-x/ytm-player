@@ -1,4 +1,4 @@
-"""Scroll bars about 8 px thick in kitty, with rounded ends.
+"""Scroll bars about 8 px thick in kitty.
 
 A terminal cell here is about 9 px wide and 20 px tall. A vertical bar one
 cell wide is already about 9 px. A horizontal bar one cell tall is 20 px, so
@@ -15,14 +15,11 @@ from rich.style import Style
 from textual.scrollbar import ScrollBar, ScrollBarRender
 
 _THIN = "▃"  # lower three-eighths block: the horizontal thumb
-_END = "▂"  # lower quarter block: the horizontal thumb's tapered ends
 _FULL = "█"  # the vertical thumb
-_CAP_TOP = "▄"  # lower half block: the vertical thumb's rounded top
-_CAP_BOTTOM = "▀"  # upper half block: the vertical thumb's rounded bottom
 
 
 class ThinScrollBarRender(ScrollBarRender):
-    """Scroll bars drawn as a thin line (horizontal) or a one-cell bar (vertical), ends rounded."""
+    """Scroll bars drawn as a thin line (horizontal) or a one-cell bar (vertical)."""
 
     @classmethod
     def render_bar(
@@ -43,12 +40,8 @@ class ThinScrollBarRender(ScrollBarRender):
         thumb_size = max(1.0, window_size / (virtual_size / size))
         start = int((size - thumb_size) * position / (virtual_size - window_size))
         end = min(int(size), start + ceil(thumb_size))
-        body, first, last = (_FULL, _CAP_TOP, _CAP_BOTTOM) if vertical else (_THIN, _END, _END)
-        glyphs = [body] * (end - start)
-        if len(glyphs) >= 3:  # round the ends when the thumb is long enough to keep its body
-            glyphs[0], glyphs[-1] = first, last
         style = Style(color=bar_color, bgcolor=back_color, meta={"@mouse.down": "grab"})
-        thumb = [Segment(glyph, style) for glyph in glyphs]
+        thumb = [Segment(_FULL if vertical else _THIN, style)] * (end - start)
         return _segments([upper] * start + thumb + [lower] * (int(size) - end), vertical)
 
 

@@ -135,6 +135,12 @@ class YTMPlayerApp(
         color: $foreground;
     }
 
+    /* Up next shows no scroll bar, so its row dividers end as floating lines.
+       It lives here because this sheet's * rule outranks a widget's own CSS. */
+    UpNextList {
+        scrollbar-size-vertical: 0;
+    }
+
     /* Tables sit on the page's black: no grey panel, header or zebra rows. */
     DataTable,
     DataTable > .datatable--header,

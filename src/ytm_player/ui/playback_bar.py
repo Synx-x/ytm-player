@@ -18,7 +18,7 @@ from textual.widgets import Static
 from ytm_player.services.queue import RepeatMode
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.album_art import AlbumArt
-from ytm_player.ui.widgets.cover import Cover, has_real_images
+from ytm_player.ui.widgets.cover import Cover, has_real_images, track_thumbnail
 from ytm_player.ui.widgets.progress_bar import SeekLine
 from ytm_player.utils.formatting import extract_artist, format_duration, truncate
 
@@ -367,17 +367,19 @@ class PlaybackBar(Widget):
 
     DEFAULT_CSS = """
     PlaybackBar {
-        height: 6;
+        height: 7;
         background: $playback-bar-bg;
     }
     /* Under the two-row seek line: three groups, as the web player bar lays
        them out. Transport and time hug the left and volume and modes hug the
        right, each sized to its content. The track takes the middle, 4 cells
        from each side. Every item inside a group has the same 2-cell gap. */
+    /* One blank row above and below the 3 control rows, so the controls sit
+       exactly midway between the seek line and the bar's bottom edge. */
     PlaybackBar #pb-outer {
         height: 1fr;
         width: 1fr;
-        padding: 0 2;
+        padding: 1 2;
         align-vertical: middle;
     }
     PlaybackBar #pb-left {
@@ -511,7 +513,7 @@ class PlaybackBar(Widget):
         info.title = track.get("title", "")
         info.artist = extract_artist(track)
         info.album = track.get("album") or ""
-        art.set_track(track.get("thumbnail_url", ""))
+        art.set_track(track_thumbnail(track))
 
     def update_playback_state(self, *, is_playing: bool, is_paused: bool) -> None:
         """Update play/pause state indicators."""

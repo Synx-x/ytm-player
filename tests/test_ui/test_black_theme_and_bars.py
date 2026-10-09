@@ -23,15 +23,15 @@ def test_horizontal_bars_draw_a_thin_line_and_vertical_bars_stay_one_cell():
         back_color=Color.parse("#000000"), bar_color=Color.parse("#2e2e2e")).segments  # fmt: skip
     cells = [s.text for s in segments if s.text != "\n"]
     assert len(cells) == 20
-    assert set(cells) == {"▃", "▂", " "}
-    assert cells[:7] == ["▂", "▃", "▃", "▃", "▃", "▃", "▂"], "a thin line with tapered ends"
+    assert set(cells) == {"▃", " "}
+    assert cells[:7] == ["▃"] * 7, "one even line, no stepped ends"
 
 
-def test_vertical_bars_are_one_cell_with_rounded_ends():
+def test_vertical_bars_are_one_solid_cell():
     segments = ThinScrollBarRender.render_bar(
         size=10, virtual_size=40, window_size=20, position=0, vertical=True,
         back_color=Color.parse("#000000"), bar_color=Color.parse("#2e2e2e")).segments  # fmt: skip
-    assert [s.text for s in segments][:5] == ["▄", "█", "█", "█", "▀"]
+    assert [s.text for s in segments][:5] == ["█"] * 5
 
 
 class _Host(App):
@@ -51,7 +51,7 @@ async def test_the_player_bar_lays_out_like_the_web_player():
     async with app.run_test(size=(140, 20)) as pilot:
         await pilot.pause()
         bar = app.query_one(PlaybackBar)
-        assert bar.outer_size.height == 6
+        assert bar.outer_size.height == 7
         seek = app.query_one("#pb-progress")
         assert seek.region.y == bar.region.y and seek.region.width == bar.region.width
         groups = [app.query_one(s).region for s in ("#pb-left", "#pb-center", "#pb-right")]
@@ -214,3 +214,15 @@ async def test_track_tables_have_no_grey_background_or_header():
         assert table.styles.background.hex.upper() == "#000000"
         header = table.get_component_styles("datatable--header")
         assert header.background.hex.upper() == "#000000"
+
+
+async def test_controls_sit_midway_between_the_seek_line_and_the_bottom_edge():
+    app = _Host()
+    async with app.run_test(size=(140, 20)) as pilot:
+        await pilot.pause()
+        bar = app.query_one(PlaybackBar).region
+        seek = app.query_one("#pb-progress").region
+        play = app.query_one("#pb-play").region
+        above = play.y - seek.bottom
+        below = bar.bottom - play.bottom
+        assert above == below == 1

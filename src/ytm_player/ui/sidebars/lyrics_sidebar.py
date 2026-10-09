@@ -29,6 +29,8 @@ _TIMESTAMP_RE = re.compile(r"\[(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?\]")
 _WORD_RE = re.compile(r"\S+\s*")
 # A line with no known end lasts this long at most for word timing.
 _MAX_LINE_SECONDS = 8.0
+# Words light this long before their estimated start, so the highlight leads the singer.
+WORD_LEAD_SECONDS = 1.0
 
 
 def word_spans(text: str, start: float, end: float) -> list[tuple[int, float]]:
@@ -488,7 +490,7 @@ class LyricsSidebar(Widget):
             self._word_spans = word_spans(widget._text, *self._line_window(index))
         theme = get_theme()
         widget.show_lit(
-            lit_length(self._word_spans, position),
+            lit_length(self._word_spans, position + WORD_LEAD_SECONDS),
             f"bold {theme.lyrics_current}",
             theme.lyrics_upcoming,
         )

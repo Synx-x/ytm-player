@@ -10,11 +10,10 @@ from textual.app import App, ComposeResult
 
 from ytm_player.services.queue import QueueManager
 from ytm_player.ui import playback_bar
-from ytm_player.ui.pages.now_playing import NowPlayingPage
+from ytm_player.ui.pages.now_playing import NowPlayingPage, UpNextRow
 from ytm_player.ui.playback_bar import PlaybackBar
 from ytm_player.ui.widgets import cover
 from ytm_player.ui.widgets.cover import Cover
-from ytm_player.ui.widgets.track_table import TrackTable
 
 
 def _track(video_id: str, title: str) -> dict:
@@ -69,8 +68,9 @@ async def test_the_view_shows_the_playing_track_large_beside_up_next():
         assert str(app.query_one("#np-artist").render()) == "Kid Cudi"
         big = app.query_one("#np-cover", Cover)
         assert big.url.endswith("=w544-h544-l90-rj") and big.size == (60, 30)
-        titles = [t["title"] for t in app.query_one(TrackTable).visible_tracks]
-        assert titles == ["BLUE SKY", "Opiate", "Ladders"]
+        rows = list(app.query(UpNextRow))
+        assert [str(r.query_one(".un-title").render()) for r in rows] == ["BLUE SKY", "Opiate", "Ladders"]
+        assert rows[0].has_class("-current") and not rows[1].has_class("-current")
 
 
 async def test_the_view_follows_a_track_change():
@@ -116,3 +116,55 @@ async def test_the_cover_shrinks_so_title_and_artist_stay_on_screen():
         artist = app.query_one("#np-artist")
         assert big.size.height < 30 and big.size.width == 2 * big.size.height
         assert artist.region.bottom <= app.query_one(NowPlayingPage).region.bottom
+
+
+async def test_an_up_next_row_shows_cover_title_artist_and_duration():
+    app = _Host("now_playing")
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        row = app.query(UpNextRow).first()
+        assert row.query_one("Cover").size == (4, 2)
+        assert str(row.query_one(".un-artist").render()) == "Kid Cudi"
+        assert str(row.query_one(".un-time").render()) == "2:00"
+        assert row.outer_size.height == 3, "two lines and a divider"
+
+
+async def test_clicking_an_up_next_row_plays_it():
+    from unittest.mock import AsyncMock
+
+    app = _Host("now_playing")
+    app.play_track = AsyncMock()
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        await pilot.click(list(app.query(UpNextRow))[2])
+        for _ in range(3):
+            await pilot.pause()
+        app.play_track.assert_awaited_once()
+        assert app.play_track.await_args.args[0]["title"] == "Ladders"
+
+
+async def test_up_next_has_no_scroll_bar_so_its_dividers_float():
+    from ytm_player.ui.pages.now_playing import UpNextList
+
+    from ytm_player.app._app import YTMPlayerApp
+
+    class _AppCssHost(_Host):
+        CSS = YTMPlayerApp.CSS  # its * rule is what overrode the list before
+
+    app = _AppCssHost("now_playing")
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        assert app.query_one(UpNextList).styles.scrollbar_size_vertical == 0
+
+
+async def test_up_next_is_centred_at_most_90_percent_of_its_half():
+    from ytm_player.ui.pages.now_playing import UpNextList
+
+    app = _Host("now_playing")
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        half = app.query_one("#np-right").region
+        listing = app.query_one(UpNextList).region
+        assert listing.width <= round(half.width * 0.9)
+        left_gap, right_gap = listing.x - half.x, half.right - listing.right
+        assert abs(left_gap - right_gap) <= 1 and left_gap > 0

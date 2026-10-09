@@ -1,8 +1,9 @@
 """The web app's now-playing view: a large cover on the left, Up next on the right.
 
 A left click on the player bar's cover or title opens it, and a second click
-goes back, as on music.youtube.com. Up next is the Queue page, embedded, so its
-keys, menus and reordering work here too.
+goes back, as on music.youtube.com. Up next lists the queue from the playing
+track on, each row a small cover, title over artist, and duration. Click a row
+to play it. The Queue page keeps reordering and removal.
 """
 
 from __future__ import annotations
@@ -11,14 +12,14 @@ import re
 from typing import TYPE_CHECKING, Any, cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.events import Click
 from textual.widget import Widget
 from textual.widgets import Label
 
 from ytm_player.config.keymap import Action
-from ytm_player.ui.pages.queue import QueuePage
-from ytm_player.ui.widgets.cover import Cover
-from ytm_player.utils.formatting import extract_artist
+from ytm_player.ui.widgets.cover import Cover, track_thumbnail
+from ytm_player.utils.formatting import extract_artist, format_duration
 
 if TYPE_CHECKING:
     from ytm_player.app._base import YTMHostBase
@@ -33,9 +34,92 @@ _TEXT_ROWS = 5
 def _cover_url(track: dict[str, Any] | None) -> str:
     if not track:
         return ""
-    url = track.get("thumbnail_url") or ""
+    url = track_thumbnail(track)
     # Player thumbnails are small. lh3 URLs carry their size, so ask for a large copy.
     return re.sub(r"=w\d+-h\d+", "=w544-h544", url, count=1)
+
+
+# Rows the Up next list shows: the playing track and those after it.
+_UP_NEXT_ROWS = 60
+
+
+class UpNextRow(Horizontal):
+    """One queue entry as the web lists it: small cover, title over artist, duration on the right."""
+
+    DEFAULT_CSS = """
+    UpNextRow { height: 3; padding: 0 1; margin: 0 2 0 1; border-bottom: solid $border; }
+    UpNextRow:hover { background: $boost; }
+    UpNextRow > Cover { width: 4; height: 2; margin-right: 2; }
+    UpNextRow .un-text { width: 1fr; height: 2; }
+    UpNextRow .un-title { text-style: bold; text-wrap: nowrap; text-overflow: ellipsis; }
+    UpNextRow .un-artist { color: $text-muted; text-wrap: nowrap; text-overflow: ellipsis; }
+    UpNextRow .un-time { width: 7; height: 2; content-align: right middle; color: $text-muted; }
+    UpNextRow.-current .un-title { color: $primary; }
+    """
+
+    def __init__(self, track: dict[str, Any], index: int, current: bool) -> None:
+        super().__init__(classes="-current" if current else "")
+        self.track = track
+        self.index = index
+
+    def compose(self) -> ComposeResult:
+        yield Cover(track_thumbnail(self.track))
+        with Vertical(classes="un-text"):
+            yield Label(self.track.get("title") or "", classes="un-title")
+            yield Label(extract_artist(self.track) or "", classes="un-artist")
+        duration = self.track.get("duration")
+        yield Label(format_duration(int(duration)) if duration else "", classes="un-time")
+
+    def on_click(self, event: Click) -> None:
+        if event.button != 1:
+            return
+        event.stop()
+        self.app.run_worker(self._play(), group="up-next-play", exclusive=True)
+
+    async def _play(self) -> None:
+        app = cast("YTMHostBase", self.app)
+        track = app.queue.jump_to(self.index)
+        if track:
+            await app.play_track(track)
+
+
+class UpNextList(VerticalScroll):
+    """The queue from the playing track onward, rebuilt when the queue changes."""
+
+    DEFAULT_CSS = """
+    /* No scroll bar (set in the app's CSS): the dividers end in open space, as
+       floating lines. The list still scrolls by wheel and keys. */
+    UpNextList { height: 1fr; }
+    UpNextList .un-empty { color: $text-muted; padding: 1 2; }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._shown: tuple[Any, ...] | None = None
+
+    def on_mount(self) -> None:
+        self.refresh_rows()
+        self.set_interval(_FOLLOW_SECONDS, self.refresh_rows)
+
+    def refresh_rows(self) -> None:
+        queue = getattr(self.app, "queue", None)
+        if queue is None:
+            return
+        tracks = list(queue.tracks)
+        current = max(0, queue.real_index) if tracks else -1
+        signature = (queue.generation, len(tracks), current)
+        if signature == self._shown:
+            return
+        self._shown = signature
+        self.remove_children()
+        if not tracks:
+            self.mount(Label("Queue is empty.", classes="un-empty"))
+            return
+        rows = [
+            UpNextRow(track, index, index == current)
+            for index, track in enumerate(tracks[current : current + _UP_NEXT_ROWS], start=current)
+        ]
+        self.mount(*rows)
 
 
 class NowPlayingPage(Widget):
@@ -48,7 +132,9 @@ class NowPlayingPage(Widget):
     NowPlayingPage #np-cover { width: 60; height: 30; }
     NowPlayingPage #np-title { width: 60; margin-top: 1; text-style: bold; content-align: center top; }
     NowPlayingPage #np-artist { width: 60; color: $text-muted; content-align: center top; }
-    NowPlayingPage #np-right { width: 1fr; height: 1fr; border-left: solid $border; }
+    /* Up next sits centred in its half, at most 90% of it, clear of the edges. */
+    NowPlayingPage #np-right { width: 1fr; height: 1fr; align-horizontal: center; }
+    NowPlayingPage #np-right > * { width: 100%; max-width: 90%; }
     NowPlayingPage #np-upnext-title { height: 1; padding: 0 1; text-style: bold; }
     """
 
@@ -64,7 +150,7 @@ class NowPlayingPage(Widget):
                 yield Label("", id="np-artist")
             with Vertical(id="np-right"):
                 yield Label("Up next", id="np-upnext-title")
-                yield QueuePage(id="np-queue")
+                yield UpNextList(id="np-queue")
 
     def on_mount(self) -> None:
         self._follow()
@@ -98,7 +184,11 @@ class NowPlayingPage(Widget):
         self.query_one("#np-artist", Label).update(extract_artist(track) if track else "")
 
     async def handle_action(self, action: Action, count: int = 1) -> None:
-        await self.query_one("#np-queue", QueuePage).handle_action(action, count)
+        scroll = self.query_one("#np-queue", UpNextList)
+        if action == Action.MOVE_DOWN:
+            scroll.scroll_relative(y=3 * count, animate=False)
+        elif action == Action.MOVE_UP:
+            scroll.scroll_relative(y=-3 * count, animate=False)
 
     def get_nav_state(self) -> dict[str, Any]:
         return {}

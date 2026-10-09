@@ -40,6 +40,9 @@ _IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
 _PLACEHOLDER = "♫"
 # Corner radius of a cover, as a share of its shorter side.
 CORNER_RATIO = 0.06
+# YouTube's hqdefault video thumbnail, and where the square art sits in it.
+_VIDEO_THUMB_SIZE = (480, 360)
+_VIDEO_THUMB_ART = (105, 45, 375, 315)
 _LH3_SIZE = re.compile(r"=w\d+-h\d+")
 
 _renderable_cls: type | None = None
@@ -156,6 +159,21 @@ def _temp_beside(path: Path) -> Path:
     return path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
 
 
+def track_thumbnail(track: dict | None) -> str:
+    """A track's cover URL, else YouTube's own thumbnail for its video id.
+
+    Radio and restored queue tracks often carry no thumbnail. YouTube serves
+    one for every video, 4:3 with the square art centred, so covers crop it.
+    """
+    if not track:
+        return ""
+    url = track.get("thumbnail_url") or ""
+    if url:
+        return url
+    video_id = track.get("video_id") or track.get("videoId") or ""
+    return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg" if video_id else ""
+
+
 def cached_path(url: str) -> Path:
     return THUMB_DIR / (hashlib.sha1(url.encode()).hexdigest() + ".img")
 
@@ -186,16 +204,22 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
     unknown or the copy cannot be made.
     """
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         from textual_image._terminal import get_cell_size
 
         cell = get_cell_size()
         width, height = max(1, cols) * cell.width, max(1, rows) * cell.height
-        target = path.with_name(f"{path.stem}.{width}x{height}.r.png")
+        target = path.with_name(f"{path.stem}.{width}x{height}.r2.png")
         if not target.exists():
             with Image.open(path) as image:
                 image = image.convert("RGB")
-                image.thumbnail((width, height), Image.LANCZOS)
+                if image.size == _VIDEO_THUMB_SIZE:
+                    # A video thumbnail: the square art sits in the middle of a
+                    # 16:9 frame inside the 4:3 image, between black bars and
+                    # coloured side pillars. Keep the art alone.
+                    image = image.crop(_VIDEO_THUMB_ART)
+                # Fill the cover box, cropping the centre if the shapes differ.
+                image = ImageOps.fit(image, (width, height), Image.LANCZOS)
                 image = round_corners(image)
                 tmp = _temp_beside(target)
                 image.save(tmp, format="PNG")
