@@ -98,6 +98,8 @@ class UISettings:
     region: str = "ZZ"  # ISO 3166-1 alpha-2 (or "ZZ" = Global) — used by Browse > Charts
     sidebar_overflow: str = "truncate"  # "truncate" or "wrap"
     show_queue_source: bool = True
+    # Reopen with the layout the last run closed with: lyrics panel and album art.
+    remember_layout: bool = True
 
 
 @dataclass

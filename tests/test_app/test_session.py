@@ -740,3 +740,71 @@ class TestFirstRunHint:
         h = _fresh_session_host()
         await h._restore_session_state()
         assert h._first_run_hint_shown is False
+
+
+class TestLayoutAndAutosave:
+    """The lyrics panel and album art reopen as left, and the session saves while the app runs."""
+
+    def _host_with_file(self, tmp_path, monkeypatch, state: dict | None = None):
+        path = tmp_path / "session.json"
+        if state is not None:
+            path.write_text(json.dumps({"schema_version": 1, **state}), encoding="utf-8")
+        monkeypatch.setattr("ytm_player.config.paths.SESSION_STATE_FILE", path, raising=False)
+        h = _fresh_session_host()
+        h.settings.playback.resume_on_launch = False
+        h._apply_lyrics_sidebar = MagicMock()
+        art = MagicMock(display=True)
+        h.query_one = MagicMock(return_value=art)
+        h.player.volume = 35
+        h.player.current_track = None
+        h.queue.repeat_mode = RepeatMode.ALL
+        h.queue.shuffle_enabled = True
+        h.queue.current_index = 0
+        h._get_transliteration_state = lambda: False
+        return h, path, art
+
+    async def test_lyrics_and_album_art_restore_when_remembered(self, tmp_path, monkeypatch):
+        h, _path, art = self._host_with_file(
+            tmp_path, monkeypatch, {"lyrics_open": True, "album_art": False}
+        )
+        h.settings.ui.remember_layout = True
+        await h._restore_session_state()
+        assert h._lyrics_sidebar_open is True
+        h._apply_lyrics_sidebar.assert_called_once_with(True)
+        assert art.display is False
+
+    async def test_layout_is_not_restored_when_the_option_is_off(self, tmp_path, monkeypatch):
+        h, _path, art = self._host_with_file(
+            tmp_path, monkeypatch, {"lyrics_open": True, "album_art": False}
+        )
+        h.settings.ui.remember_layout = False
+        await h._restore_session_state()
+        assert h._lyrics_sidebar_open is False
+        assert art.display is True
+
+    def test_save_writes_volume_shuffle_repeat_and_layout(self, tmp_path, monkeypatch):
+        h, path, art = self._host_with_file(tmp_path, monkeypatch)
+        h._lyrics_sidebar_open = True
+        art.display = False
+        h._save_session_state()
+        saved = json.loads(path.read_text())
+        assert (saved["volume"], saved["shuffle"], saved["repeat"]) == (35, True, "all")
+        assert (saved["lyrics_open"], saved["album_art"]) == (True, False)
+
+    def test_autosave_skips_the_write_when_nothing_changed(self, tmp_path, monkeypatch):
+        h, path, _art = self._host_with_file(tmp_path, monkeypatch)
+        h._save_session_state()
+        stamp = path.stat().st_mtime_ns
+        h._save_session_state()
+        assert path.stat().st_mtime_ns == stamp
+        h.player.volume = 60
+        h._save_session_state()
+        assert json.loads(path.read_text())["volume"] == 60
+
+    def test_a_failing_autosave_warns_once(self, tmp_path, monkeypatch):
+        h, _path, _art = self._host_with_file(tmp_path, monkeypatch)
+        h.notify = MagicMock()
+        h._sidebar_per_page = {"x": object()}  # not JSON-serialisable
+        for _ in range(3):
+            h._save_session_state()
+        assert h.notify.call_count == 1

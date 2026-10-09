@@ -131,7 +131,10 @@ home_shelves = 3             # number of recommendation shelves on Browse → Fo
 show_selection_info = true   # show focused-item full name in the row above the playback bar
 sidebar_overflow = "truncate"  # "truncate" (1-row + ellipsis) or "wrap" (multi-line names)
 show_queue_source = true     # show "Generated from: …" header on radio/discovery queues
+remember_layout = true       # reopen the lyrics panel and album art as the last run left them
 ```
+
+ytm-player saves volume, shuffle, repeat, the queue, the resume point and each page's playlist sidebar to `session.json` every 5 seconds while the app runs. It does not wait for a clean exit. A closed terminal or a killed process keeps them.
 
 `theme` is the startup default. Changing theme from Textual's command palette (`Ctrl+P` → `Theme`) updates the current session and is saved in `session.json`, not `config.toml`. To make the active theme the new default, run `Ctrl+P` → `Set Current Theme as Default`.
 

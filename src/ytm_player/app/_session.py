@@ -13,6 +13,8 @@ from ytm_player.ui.sidebars.lyrics_sidebar import LyricsSidebar
 logger = logging.getLogger(__name__)
 
 _SESSION_SCHEMA_VERSION = 1
+# Seconds between session saves while the app runs.
+SESSION_AUTOSAVE_SECONDS = 5
 
 
 class SessionMixin(YTMHostBase):
@@ -120,8 +122,18 @@ class SessionMixin(YTMHostBase):
         saved_sidebar = state.get("sidebar_per_page")
         if saved_sidebar and isinstance(saved_sidebar, dict):
             self._sidebar_per_page = saved_sidebar
-        # Always start with lyrics sidebar closed regardless of previous session.
+        # The lyrics panel and album art reopen as the last run left them,
+        # unless [ui] remember_layout is off.
         self._lyrics_sidebar_open = False
+        if self.settings.ui.remember_layout:
+            if state.get("lyrics_open") is True:
+                self._lyrics_sidebar_open = True
+                self._apply_lyrics_sidebar(True)
+            if isinstance(state.get("album_art"), bool):
+                try:
+                    self.query_one("#pb-art").display = state["album_art"]
+                except Exception:
+                    logger.debug("Failed to restore album art visibility", exc_info=True)
 
         # Restore first-run hint flag — defaults False so legacy session.json
         # files (or fresh installs) trigger the toast on first launch.
@@ -186,6 +198,19 @@ class SessionMixin(YTMHostBase):
 
         self._session_restored = True
 
+    def _album_art_shown(self) -> bool:
+        try:
+            return bool(self.query_one("#pb-art").display)
+        except Exception:
+            return True
+
+    def _start_session_autosave(self) -> None:
+        """Save the session every few seconds, so a closed terminal or a kill keeps it.
+
+        Before, the session was written only on a clean exit.
+        """
+        self.set_interval(SESSION_AUTOSAVE_SECONDS, self._save_session_state)
+
     def _save_session_state(self) -> None:
         """Persist volume, shuffle, repeat, queue and resume point to disk."""
         from ytm_player.config.paths import SESSION_STATE_FILE
@@ -239,8 +264,14 @@ class SessionMixin(YTMHostBase):
             "transliteration_enabled": self._get_transliteration_state(),
             "first_run_hint_shown": self._first_run_hint_shown,
             "mpris_hint_shown": self._mpris_hint_shown,
+            "lyrics_open": self._lyrics_sidebar_open,
+            "album_art": self._album_art_shown(),
         }
         try:
+            # Autosave runs every few seconds: skip the write when nothing changed.
+            encoded = json.dumps(state)
+            if encoded == getattr(self, "_last_saved_session", None):
+                return
             import os
 
             from ytm_player.config.paths import SECURE_FILE_MODE, secure_chmod
@@ -248,9 +279,10 @@ class SessionMixin(YTMHostBase):
             SESSION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
             tmp_path = SESSION_STATE_FILE.with_suffix(SESSION_STATE_FILE.suffix + ".tmp")
             try:
-                tmp_path.write_text(json.dumps(state), encoding="utf-8")
+                tmp_path.write_text(encoded, encoding="utf-8")
                 secure_chmod(tmp_path, SECURE_FILE_MODE)
                 os.replace(tmp_path, SESSION_STATE_FILE)
+                self._last_saved_session = encoded
             finally:
                 if tmp_path.exists():
                     try:
@@ -259,6 +291,9 @@ class SessionMixin(YTMHostBase):
                         pass
         except (OSError, TypeError):
             logger.exception("Could not save session state")
+            if getattr(self, "_session_save_warned", False):
+                return  # autosave retries every few seconds: warn once per run
+            self._session_save_warned = True
             try:
                 self.notify(
                     "Could not save session state — your queue and "
