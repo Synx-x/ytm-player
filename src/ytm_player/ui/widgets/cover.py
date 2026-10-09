@@ -18,6 +18,7 @@ import asyncio
 import hashlib
 import logging
 import os
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ _TIMEOUT = 8
 _FIRST_PAINT_DELAY = 0.12  # seconds: the page lays out and paints its text first
 _IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
 _PLACEHOLDER = "♫"
+_LH3_SIZE = re.compile(r"=w\d+-h\d+")
 
 _renderable_cls: type | None = None
 _kitty = False
@@ -136,7 +138,10 @@ def best_thumbnail(item: dict, min_width: int = 226) -> str:
     for thumb in ranked:
         if (thumb.get("width") or 0) >= min_width:
             return thumb.get("url", "")
-    return ranked[-1].get("url", "")
+    # Song and artist results list 120 px at most. Their lh3 URLs carry the
+    # size, so ask the image host for a larger copy.
+    url = ranked[-1].get("url", "")
+    return _LH3_SIZE.sub(f"=w{min_width}-h{min_width}", url, count=1)
 
 
 def cached_path(url: str) -> Path:

@@ -15,7 +15,7 @@ Status values: `done`, `partial`, `todo`.
 | L3 | Top bar: search box | Header search box opens Search with the cursor in it | done |
 | L4 | Main area: Home shelves of cover cards | Home page | done |
 | L5 | Bottom player bar: cover, title, artist, controls, progress, volume | Playback bar with real cover | partial |
-| L6 | Real cover art everywhere | Home, Library grid, album and playlist pages, player bar. Not yet Search, Explore | partial |
+| L6 | Real cover art everywhere | Home, Search, Library grid, album and playlist pages, player bar. Not yet Explore | partial |
 
 ## Behaviour
 
@@ -24,7 +24,7 @@ Status values: `done`, `partial`, `todo`.
 | B1 | Click a song card: play it | Home card click, Enter | done |
 | B2 | Click an album or playlist card: open its page | Home card click, Enter | done |
 | B3 | Shelf ◀ ▶ arrows scroll the row | Shelf arrow buttons, Shift+wheel, tilt wheel | done |
-| B4 | Search from the top bar, results by type | Search page | partial |
+| B4 | Search from the top bar, results by type | Top result card with Play, songs, then Albums, Artists and Community playlists shelves of cover cards. Right-click a card for its actions | done |
 | B5 | Album and playlist page: big cover, Play, track list | Hero header on every album and playlist page, sidebar playlists included: cover, details, Play, Shuffle, Save, Radio | done |
 | B6 | Player bar: play/pause, next, previous, seek by click | Playback bar | partial |
 | B7 | Up next queue | Queue page | partial |

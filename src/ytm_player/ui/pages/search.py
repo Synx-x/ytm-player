@@ -7,7 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
 from textual.reactive import reactive
@@ -17,7 +17,9 @@ from textual.widgets import Input, Label, ListItem, ListView, Static
 
 from ytm_player.config.keymap import Action
 from ytm_player.config.settings import get_settings
+from ytm_player.ui.pages.home import Shelf, card_subtitle, navigate_browse_item, relayout_soon
 from ytm_player.ui.theme import get_theme
+from ytm_player.ui.widgets.cover import Cover, best_thumbnail
 from ytm_player.ui.widgets.track_table import TrackTable
 from ytm_player.utils.formatting import (
     copy_to_clipboard,
@@ -260,6 +262,97 @@ class SuggestionList(Widget):
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Web layout: top result card and shelves of cover cards
+# ---------------------------------------------------------------------------
+
+# Shelf title and the panel id its right-click menu maps to, per category.
+_SHELVES = (
+    ("albums", "Albums", "albums-panel"),
+    ("artists", "Artists", "artists-panel"),
+    ("playlists", "Community playlists", "playlists-panel"),
+)
+_PANEL_FOR_TYPE = {"album": "albums-panel", "single": "albums-panel", "ep": "albums-panel",
+                   "artist": "artists-panel", "playlist": "playlists-panel"}  # fmt: skip
+
+
+def as_card(item: dict[str, Any]) -> dict[str, Any]:
+    """A search result shaped for a cover card: artists carry their name in ``artist``."""
+    card = dict(item)
+    if not card.get("title"):
+        artist = (card.get("artists") or [{}])[0]
+        card["title"] = card.get("artist") or artist.get("name", "")
+        card.setdefault("browseId", artist.get("id"))
+    if (card.get("resultType") or "").lower() == "playlist" and not card.get("description"):
+        card["description"] = " • ".join(
+            p for p in ("Playlist", card.get("author") or "", card.get("itemCount") or "") if p
+        )
+    if (card.get("resultType") or "").lower() == "artist" and card.get("subscribers"):
+        card["description"] = f"Artist • {card['subscribers']} subscribers"
+    return card
+
+
+def top_result(raw: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The item an unfiltered search marks as its top result, shaped for a card."""
+    for item in raw:
+        if item.get("category") == "Top result":
+            return as_card(item)
+    return None
+
+
+class TopResult(Horizontal, can_focus=True):
+    """The web's "Top result" card: a cover, the name, what it is, and Play for a song or album."""
+
+    DEFAULT_CSS = """
+    TopResult { height: 13; width: 1fr; padding: 1 1 0 1; background: $boost; }
+    TopResult > Cover { width: 22; height: 11; margin-right: 2; }
+    TopResult .top-text { width: 1fr; height: auto; }
+    TopResult .top-title { text-style: bold; margin-top: 3; }
+    TopResult .top-sub { width: 1fr; color: $text-muted; }
+    TopResult #top-play { width: auto; height: 3; padding: 1 2; margin-top: 1;
+        background: $foreground; color: $background; text-style: bold; }
+    TopResult #top-play:hover { background: $primary; }
+    TopResult:focus .top-title { color: $accent; text-style: bold underline; }
+    """
+
+    def __init__(self, item: dict[str, Any], **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.item = item
+
+    def compose(self) -> ComposeResult:
+        kind = (self.item.get("resultType") or "").lower()
+        yield Cover(best_thumbnail(self.item, min_width=226))
+        with Vertical(classes="top-text"):
+            yield Label(self.item.get("title", ""), classes="top-title")
+            yield Label(card_subtitle(self.item) if kind != "artist" else
+                        self.item.get("description") or "Artist", classes="top-sub")  # fmt: skip
+            if kind in ("song", "video") or (kind in ("album", "playlist") and self._playlist_id):
+                yield Static("▶  Play", id="top-play")
+
+    @property
+    def _playlist_id(self) -> str:
+        return self.item.get("playlistId") or self.item.get("audioPlaylistId") or ""
+
+    def on_click(self, event: Click) -> None:
+        if event.button != 1:
+            return
+        event.stop()
+        play = event.widget is not None and event.widget.id == "top-play"
+        self.app.run_worker(self._open(play=play), group="search-open", exclusive=True)
+
+    async def _open(self, *, play: bool) -> None:
+        host = cast("YTMHostBase", self.app)
+        kind = (self.item.get("resultType") or "").lower()
+        if play and kind in ("album", "playlist"):
+            await host._play_playlist(self._playlist_id, self.item.get("title", ""))
+        else:
+            await navigate_browse_item(host, self.item)
+
+
+# ---------------------------------------------------------------------------
+# Search page
+# ---------------------------------------------------------------------------
+
 class SearchPage(Widget):
     """Full search page with input, suggestions, and categorized result panels.
 
@@ -302,6 +395,18 @@ class SearchPage(Widget):
 
     #search-results {
         height: 1fr;
+        padding: 0 2;
+    }
+
+    #search-top {
+        height: 15;
+        margin-bottom: 1;
+    }
+
+    #top-result-box {
+        width: 1fr;
+        min-width: 40;
+        margin-right: 2;
     }
 
     #songs-panel {
@@ -310,18 +415,12 @@ class SearchPage(Widget):
         padding: 0 1;
     }
 
-    #albums-panel {
-        width: 1fr;
-    }
-
-    #artists-panel {
-        width: 1fr;
-    }
-
-    #playlists-panel {
+    #search-shelves {
         height: auto;
-        max-height: 10;
-        width: 1fr;
+    }
+
+    .search-legacy-panel {
+        display: none;
     }
 
     #suggestion-overlay {
@@ -353,17 +452,6 @@ class SearchPage(Widget):
         border: solid $accent;
     }
 
-    #albums-panel:focus-within {
-        border: solid $accent;
-    }
-
-    #artists-panel:focus-within {
-        border: solid $accent;
-    }
-
-    #playlists-panel:focus-within {
-        border: solid $accent;
-    }
     """
 
     search_mode: reactive[str] = reactive("music")
@@ -402,6 +490,7 @@ class SearchPage(Widget):
             "albums": [],
             "artists": [],
             "playlists": [],
+            "top": [],
         }
         # State restoration from navigation.
         self._restore_query = last_query
@@ -421,17 +510,23 @@ class SearchPage(Widget):
                 yield Static(f"[{mode_color}]▶[/{mode_color}] Music", id="search-mode")
             yield SuggestionList(id="suggestion-overlay")
             yield Static("", id="loading-msg", classes="loading-indicator")
-            with Horizontal(id="search-results"):
-                with Vertical(id="songs-panel"):
-                    yield Label("Songs", classes="panel-title")
-                    yield TrackTable(
-                        show_album=True,
-                        show_index=True,
-                        id="songs-table",
-                    )
-                yield SearchResultPanel("Albums", id="albums-panel")
-                yield SearchResultPanel("Artists", id="artists-panel")
-            yield SearchResultPanel("Playlists", id="playlists-panel")
+            with VerticalScroll(id="search-results"):
+                with Horizontal(id="search-top"):
+                    with Vertical(id="top-result-box"):
+                        yield Label("Top result", classes="panel-title")
+                    with Vertical(id="songs-panel"):
+                        yield Label("Songs", classes="panel-title")
+                        yield TrackTable(
+                            show_album=True,
+                            show_index=True,
+                            id="songs-table",
+                        )
+                yield Vertical(id="search-shelves")
+            # The text panels stay for their keyboard and menu handlers. The
+            # shelves above show the same results as cover cards, as on the web.
+            for name, pid in (("Albums", "albums"), ("Artists", "artists"),
+                              ("Playlists", "playlists")):  # fmt: skip
+                yield SearchResultPanel(name, id=f"{pid}-panel", classes="search-legacy-panel")
 
     def on_mount(self) -> None:
         if self._restore_mode:
@@ -492,6 +587,7 @@ class SearchPage(Widget):
             "albums": [],
             "artists": [],
             "playlists": [],
+            "top": [],
         }
 
     def get_nav_state(self) -> dict[str, Any]:
@@ -766,6 +862,7 @@ class SearchPage(Widget):
             "albums": [],
             "artists": [],
             "playlists": [],
+            "top": [],
         }
 
         ytmusic = cast("YTMHostBase", self.app).ytmusic
@@ -775,12 +872,16 @@ class SearchPage(Widget):
             category: ytmusic.search(query, filter=api_filter, limit=10)
             for category, api_filter in self._MUSIC_FILTERS.items()
         }
+        tasks["top"] = ytmusic.search(query, filter=None, limit=1)
 
         gathered = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
         for category, result in zip(tasks.keys(), gathered):
             if isinstance(result, Exception):
                 logger.error("Search for %s failed: %s", category, result)
+            elif category == "top" and isinstance(result, list):
+                top = top_result(result)
+                results["top"] = [top] if top else []
             elif isinstance(result, list):
                 results[category] = result
 
@@ -793,11 +894,14 @@ class SearchPage(Widget):
             "albums": [],
             "artists": [],
             "playlists": [],
+            "top": [],
         }
 
         ytmusic = cast("YTMHostBase", self.app).ytmusic
         assert ytmusic is not None
         raw = await ytmusic.search(query, filter=None, limit=40)
+        top = top_result(raw)
+        results["top"] = [top] if top else []
 
         for item in raw:
             result_type = item.get("resultType", "")
@@ -832,6 +936,26 @@ class SearchPage(Widget):
         playlists_panel = self.query_one("#playlists-panel", SearchResultPanel)
         playlists_panel.load_items(results.get("playlists", []))
 
+        self.run_worker(self._mount_web_results(results), group="search-cards", exclusive=True)
+
+    async def _mount_web_results(self, results: dict[str, list[dict[str, Any]]]) -> None:
+        """The top result card and one shelf of cover cards per category."""
+        box = self.query_one("#top-result-box", Vertical)
+        await box.query(TopResult).remove()
+        top = results.get("top") or []
+        if top:
+            await box.mount(TopResult(top[0]))
+        shelves = self.query_one("#search-shelves", Vertical)
+        await shelves.remove_children()
+        new = [
+            Shelf(title, [as_card(item) for item in results.get(key, [])], id=f"shelf-{key}")
+            for key, title, _ in _SHELVES
+            if results.get(key)
+        ]
+        if new:
+            await shelves.mount(*new)
+            relayout_soon(self)
+
     def _clear_stale_results(self) -> None:
         """Empty all result panels.
 
@@ -844,6 +968,7 @@ class SearchPage(Widget):
             "albums": [],
             "artists": [],
             "playlists": [],
+            "top": [],
         }
         self._last_query = ""
         try:
@@ -863,10 +988,20 @@ class SearchPage(Widget):
     # ------------------------------------------------------------------
 
     def on_click(self, event: Click) -> None:
-        """Toggle search mode when the mode label is clicked."""
+        """Toggle search mode on the mode label. A right-click on a card opens its menu."""
         widget = event.widget
         if widget is None:
             return
+        if event.button == 3:
+            card = next((w for w in widget.ancestors_with_self if hasattr(w, "item")), None)
+            if card is not None and isinstance(card.item, dict):
+                event.stop()
+                kind = (card.item.get("resultType") or "").lower()
+                panel = _PANEL_FOR_TYPE.get(kind, "")
+                self.on_search_result_panel_item_right_clicked(
+                    SearchResultPanel.ItemRightClicked(card.item, panel)
+                )
+                return
         # Match the #search-mode Static or any child of it.
         try:
             if (

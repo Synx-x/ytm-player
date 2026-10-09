@@ -114,6 +114,8 @@ class HomeCard(Vertical, can_focus=True):
         yield Label(card_subtitle(self.item), classes="card-sub")
 
     def on_click(self, event: events.Click) -> None:
+        if event.button != 1:
+            return  # a right-click is for the page's actions menu, where it has one
         event.stop()
         self.focus()
         self.action_open()
