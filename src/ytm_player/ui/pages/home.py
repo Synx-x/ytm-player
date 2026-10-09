@@ -116,6 +116,38 @@ class HomeCard(Vertical, can_focus=True):
         yield Label(self.item.get("title", ""), classes="card-title")
         yield Label(card_subtitle(self.item), classes="card-sub")
 
+    def on_enter(self, event: events.Enter) -> None:
+        self._start_dwell()
+
+    def on_leave(self, event: events.Leave) -> None:
+        self._stop_dwell()
+
+    def on_focus(self, event: events.Focus) -> None:
+        self._start_dwell()
+
+    def on_blur(self, event: events.Blur) -> None:
+        self._stop_dwell()
+
+    def _start_dwell(self) -> None:
+        """A song card the pointer or focus rests on gets its stream resolved before the click."""
+        from ytm_player.app._playback import SPECULATE_DWELL
+
+        video_id = self.item.get("videoId") or ""
+        speculate = getattr(self.app, "_speculate", None)
+        if video_id and speculate and getattr(self, "_dwell", None) is None:
+
+            def fire() -> None:
+                self._dwell = None
+                speculate(video_id)
+
+            self._dwell = self.set_timer(SPECULATE_DWELL, fire)
+
+    def _stop_dwell(self) -> None:
+        dwell = getattr(self, "_dwell", None)
+        if dwell is not None:
+            dwell.stop()
+        self._dwell = None
+
     def on_click(self, event: events.Click) -> None:
         if event.button != 1:
             return  # a right-click is for the page's actions menu, where it has one

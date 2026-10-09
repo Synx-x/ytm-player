@@ -282,3 +282,35 @@ async def test_the_first_shelves_paint_before_the_rest_mount(monkeypatch):
         assert len(app.query(home.Shelf)) == 2
         await pilot.pause(0.7)
         assert len(app.query(home.Shelf)) == 5
+
+
+async def test_a_song_card_the_pointer_rests_on_is_resolved_ahead(monkeypatch):
+    from ytm_player.app import _playback
+
+    monkeypatch.setattr(_playback, "SPECULATE_DWELL", 0.2)
+    app = _Host(_feed())
+    app._speculate = MagicMock()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _ready(pilot)
+        await pilot.hover(HomeCard)
+        await pilot.pause(0.4)
+        app._speculate.assert_called_once_with("vid123")
+        await pilot.hover("#page", offset=(130, 38))
+        await pilot.hover(HomeCard)
+        await pilot.pause(0.4)
+        assert app._speculate.call_count == 2
+
+
+async def test_passing_over_a_card_does_not_resolve_it(monkeypatch):
+    from ytm_player.app import _playback
+
+    monkeypatch.setattr(_playback, "SPECULATE_DWELL", 0.3)
+    app = _Host(_feed())
+    app._speculate = MagicMock()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _ready(pilot)
+        await pilot.hover(HomeCard)
+        await pilot.pause(0.05)
+        await pilot.hover("#page", offset=(130, 38))
+        await pilot.pause(0.5)
+        app._speculate.assert_not_called()
