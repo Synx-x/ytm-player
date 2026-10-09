@@ -64,6 +64,27 @@ _CUSTOM_CHROMIUM_BROWSERS: dict[str, tuple[str, str]] = {
 }
 _yt_dlp_patched = False
 
+# Cookies that carry the Google sign-in. A browser profile that has used
+# YouTube for a while holds hundreds of youtube.com cookies, and sending all
+# of them makes a Cookie header so large that YouTube answers
+# 413 Request Entity Too Large, which ytmusicapi surfaces as a JSON error.
+_AUTH_COOKIE_NAMES = frozenset(
+    {
+        "SID", "HSID", "SSID", "APISID", "SAPISID",
+        "__Secure-1PSID", "__Secure-3PSID",
+        "__Secure-1PAPISID", "__Secure-3PAPISID",
+        "__Secure-1PSIDTS", "__Secure-3PSIDTS",
+        "__Secure-1PSIDCC", "__Secure-3PSIDCC", "SIDCC",
+        "LOGIN_INFO", "PREF", "VISITOR_INFO1_LIVE", "YSC",
+    }
+)  # fmt: skip
+
+
+def _auth_cookie_header(cookies: Iterable[Cookie]) -> str:
+    """Cookie header for the API session: only the sign-in cookies, one per name."""
+    kept = {c.name: c.value for c in cookies if c.name in _AUTH_COOKIE_NAMES}
+    return "; ".join(f"{name}={value}" for name, value in kept.items())
+
 
 def _zen_profile_roots() -> list[Path]:
     """Return candidate Zen profile roots for the current platform."""
@@ -1119,7 +1140,7 @@ class AuthManager:
         session as expired and the user runs ``ytm setup`` once. The commit
         itself refuses when the files no longer match *owner*.
         """
-        cookie_str = "; ".join(f"{c.name}={c.value}" for c in cookies)
+        cookie_str = _auth_cookie_header(cookies)
 
         # Verify we have the critical SAPISID cookie.
         try:
