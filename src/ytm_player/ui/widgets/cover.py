@@ -20,6 +20,7 @@ import logging
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
@@ -144,6 +145,15 @@ def best_thumbnail(item: dict, min_width: int = 226) -> str:
     return _LH3_SIZE.sub(f"=w{min_width}-h{min_width}", url, count=1)
 
 
+def _temp_beside(path: Path) -> Path:
+    """A temp file next to *path*, unique to this call.
+
+    Two covers with the same URL load at the same time. With one shared temp
+    name, the second rename found the file already moved and failed.
+    """
+    return path.with_name(f"{path.name}.{uuid.uuid4().hex}.part")
+
+
 def cached_path(url: str) -> Path:
     return THUMB_DIR / (hashlib.sha1(url.encode()).hexdigest() + ".img")
 
@@ -158,7 +168,7 @@ def fetch_thumbnail(url: str) -> Path | None:
         request = Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urlopen(request, timeout=_TIMEOUT) as resp:  # noqa: S310 - YouTube image host
             data = resp.read()
-        tmp = path.with_suffix(".part")
+        tmp = _temp_beside(path)
         tmp.write_bytes(data)
         tmp.replace(path)
         return path
@@ -184,7 +194,7 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
             with Image.open(path) as image:
                 image = image.convert("RGB")
                 image.thumbnail((width, height), Image.LANCZOS)
-                tmp = target.with_suffix(".part")
+                tmp = _temp_beside(target)
                 image.save(tmp, format="PNG")
                 tmp.replace(target)
         return target

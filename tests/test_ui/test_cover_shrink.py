@@ -30,3 +30,20 @@ def test_a_broken_image_falls_back_to_the_original(tmp_path):
     src = tmp_path / "broken.img"
     src.write_bytes(b"not an image")
     assert cover.shrink_to_cells(src, 22, 11) == src
+
+
+def test_the_same_cover_shrunk_twice_at_once_gives_both_the_copy(tmp_path, monkeypatch):
+    """Regression: two covers with one URL shared a temp name, and the second rename failed."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import textual_image._terminal as terminal
+
+    monkeypatch.setattr(terminal, "get_cell_size", lambda: SimpleNamespace(width=8, height=16))
+    src = tmp_path / "big.img"
+    Image.new("RGB", (576, 576), "red").save(src, format="JPEG")
+
+    with ThreadPoolExecutor(8) as pool:
+        results = list(pool.map(lambda _: cover.shrink_to_cells(src, 22, 11), range(8)))
+
+    assert {r.name for r in results} == {"big.176x176.png"}
+    assert not list(tmp_path.glob("*.part"))
