@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from textual.app import ComposeResult
@@ -176,9 +177,15 @@ class NavigationMixin(YTMHostBase):
         container = self.query_one("#main-content", Container)
 
         # remove_children and mount are async; must await them.
+        started = time.monotonic()
         await container.remove_children()
+        removed = time.monotonic()
         page_widget = self._create_page(page_name, **kwargs)
         await container.mount(page_widget)
+        logger.debug(
+            "page %s: old page removed in %.2fs, new page mounted in %.2fs",
+            page_name, removed - started, time.monotonic() - removed,
+        )  # fmt: skip
         self._current_page = page_name
         self._current_page_kwargs = dict(kwargs)
         # A page swap moves the user back into the content pane; reset the

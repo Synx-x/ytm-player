@@ -270,3 +270,15 @@ def test_g_h_is_bound_to_home():
 
     assert Action("home") is Action.HOME
     assert DEFAULT_BINDINGS["home"] == ["g h"]
+
+
+async def test_the_first_shelves_paint_before_the_rest_mount(monkeypatch):
+    """A page switch showed Home only after all its cards mounted (0.6 s). The top shelves go first."""
+    monkeypatch.setattr(home, "FIRST_PAINT_GAP", 0.5)
+    feed = [{"title": f"Shelf {i}", "contents": [dict(SONG, videoId=f"s{i}")]} for i in range(5)]
+    app = _Host(feed)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _ready(pilot)
+        assert len(app.query(home.Shelf)) == 2
+        await pilot.pause(0.7)
+        assert len(app.query(home.Shelf)) == 5

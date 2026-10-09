@@ -44,4 +44,4 @@ Status values: `done`, `partial`, `todo`.
 
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
-| R1 | A click on another page lands at once while covers load | Clicks 300 ms apart land about 1 s apart. Covers draw in `render()` and never re-lay-out the page | partial |
+| R1 | A click on another page lands at once while covers load | Page switches take 0.25 s or less. Covers draw in `render()`, and Home paints its top two shelves before mounting the rest | done |

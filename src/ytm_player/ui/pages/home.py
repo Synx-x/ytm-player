@@ -12,6 +12,7 @@ or a tilt wheel scrolls it sideways, as on the web.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -36,6 +37,8 @@ logger = logging.getLogger(__name__)
 CARD_WIDTH = 24
 SCROLL_STEP = CARD_WIDTH * 3
 FEED_TTL_SECONDS = 600
+FIRST_SHELVES = 2
+FIRST_PAINT_GAP = 0.05  # seconds, about three frames
 
 # The last Home feed, so coming back to Home is instant, as on the web.
 # (monotonic time, shelves). The r key always fetches a fresh feed.
@@ -221,10 +224,16 @@ class HomePage(Widget):
             await scroll.mount(Static(_LOAD_FAILED, id="home-status", classes="home-status"))
             return
         self._shelves = [s for s in shelves if s.get("contents")]
-        await scroll.mount_all(
+        built = [
             Shelf(_clean_shelf_title(s.get("title", "")), [c for c in s["contents"] if c])
             for s in self._shelves
-        )
+        ]
+        # The first shelves fill the screen. Paint them before mounting the
+        # rest, so a page switch shows Home at once instead of after every card.
+        await scroll.mount_all(built[:FIRST_SHELVES])
+        if built[FIRST_SHELVES:]:
+            await asyncio.sleep(FIRST_PAINT_GAP)
+            await scroll.mount_all(built[FIRST_SHELVES:])
         relayout_soon(self)
 
     # ── keyboard ──────────────────────────────────────────────────
