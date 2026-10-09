@@ -83,3 +83,15 @@ async def test_the_play_button_shows_pause_while_a_track_plays():
         bar.update_playback_state(is_playing=True, is_paused=True)
         await pilot.pause()
         assert str(app.query_one("#pb-play").render()) == "▶"
+
+
+async def test_the_heart_likes_the_playing_track():
+    from unittest.mock import AsyncMock
+
+    app = _Host()
+    app._toggle_like_current = AsyncMock()
+    async with app.run_test(size=(120, 8)) as pilot:
+        await pilot.click("#pb-heart")
+        for _ in range(3):
+            await pilot.pause()
+        app._toggle_like_current.assert_awaited_once()

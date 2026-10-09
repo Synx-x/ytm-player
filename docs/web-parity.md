@@ -27,8 +27,8 @@ Status values: `done`, `partial`, `todo`.
 | B4 | Search from the top bar, results by type | Top result card with Play, songs, then Albums, Artists and Community playlists shelves of cover cards. Right-click a card for its actions | done |
 | B5 | Album and playlist page: big cover, Play, track list | Hero header on every album and playlist page, sidebar playlists included: cover, details, Play, Shuffle, Save, Radio | done |
 | B6 | Player bar: play/pause, next, previous, seek by click | Transport buttons at the bar's left end, click or scroll the progress line to seek. Previous restarts a track past 3 s | done |
-| B7 | Up next queue | Queue page | partial |
-| B8 | Like a song | `+` key and track actions | partial |
+| B7 | Up next queue | Queue page. The web shows Up next as a side panel of the now-playing view | partial |
+| B8 | Like a song | Heart in the player bar (Pilot-tested, not clicked live because it writes to the account), `+` key, track actions | done |
 | B9 | Explore: new releases, charts, moods | Explore page: New releases and Charts buttons, shelves of new albums, trending and new videos, mood and genre chips that open a grid of playlists | done |
 | B10 | Library page: grid of your playlists | Cover grid, cached for 10 minutes | done |
 | B11 | Back to Home is instant | Home feed cached for 10 minutes | done |
