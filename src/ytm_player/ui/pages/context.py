@@ -23,6 +23,7 @@ from textual.worker import Worker, WorkerState
 from ytm_player.config.keymap import Action
 from ytm_player.services.ytmusic import _EXPECTED_API_EXCEPTIONS
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
+from ytm_player.ui.widgets.cover import Cover, best_thumbnail
 from ytm_player.ui.widgets.track_table import TrackTable
 from ytm_player.utils.formatting import extract_artist, normalize_tracks
 
@@ -101,33 +102,55 @@ class ContextPage(TrackFilterHost, Widget):
         max-height: 5;
         padding: 1 2;
     }
+    .context-hero {
+        height: auto;
+        padding: 1 2;
+    }
+    .context-hero > Cover {
+        width: 30;
+        height: 15;
+        margin-right: 3;
+    }
+    .context-hero-text {
+        width: 1fr;
+        height: auto;
+    }
+    .context-hero .context-kind {
+        color: $text-muted;
+        margin-top: 2;
+    }
+    .context-hero .context-title {
+        margin: 1 0;
+    }
+    .context-actions {
+        height: 3;
+        margin-top: 1;
+    }
+    .context-actions > Static {
+        width: auto;
+        height: 3;
+        padding: 1 2;
+        margin-right: 1;
+        border: none;
+        background: $boost;
+        content-align: center middle;
+    }
+    .context-actions > Static:hover {
+        background: $primary 30%;
+    }
+    .context-actions > #play-all-btn {
+        background: $foreground;
+        color: $background;
+        text-style: bold;
+    }
+    .context-actions > #play-all-btn:hover {
+        background: $primary;
+    }
     .context-title {
         text-style: bold;
     }
     .context-subtitle {
         color: $text-muted;
-    }
-    #add-to-library-btn {
-        width: auto;
-        min-width: 18;
-        height: 1;
-        margin: 0 0 0 1;
-        padding: 0 1;
-        color: $primary;
-    }
-    #add-to-library-btn:hover {
-        background: $primary 30%;
-    }
-    #start-radio-btn {
-        width: auto;
-        min-width: 14;
-        height: 1;
-        margin: 0 0 0 1;
-        padding: 0 1;
-        color: $primary;
-    }
-    #start-radio-btn:hover {
-        background: $primary 30%;
     }
     .context-header-row {
         height: auto;
@@ -354,6 +377,35 @@ class ContextPage(TrackFilterHost, Widget):
 
         self.set_timer(0.1, lambda: self._focus_track_table())
 
+    def _mount_hero(
+        self,
+        container: Vertical,
+        kind: str,
+        title: str,
+        subtitle_lines: list[str],
+        *,
+        show_add: bool,
+        show_radio: bool,
+    ) -> None:
+        """Header laid out like the web: large cover, then title, details and actions."""
+        hero = Horizontal(classes="context-hero")
+        container.mount(hero)
+        hero.mount(Cover(best_thumbnail(self._data, min_width=544)))
+        text = Vertical(classes="context-hero-text")
+        hero.mount(text)
+        text.mount(Label(kind, classes="context-kind"))
+        text.mount(Label(title, classes="context-title"))
+        for line in subtitle_lines:
+            text.mount(Label(line, classes="context-subtitle"))
+        actions = Horizontal(classes="context-actions")
+        text.mount(actions)
+        actions.mount(Static("▶  Play", id="play-all-btn"))
+        actions.mount(Static("⤮  Shuffle", id="shuffle-all-btn"))
+        if show_add:
+            actions.mount(Static("+  Save", id="add-to-library-btn"))
+        if show_radio:
+            actions.mount(Static("((·))  Radio", id="start-radio-btn"))
+
     def _build_album(self, container: Vertical) -> None:
         data = self._data
         title = data.get("title", "Unknown Album")
@@ -368,19 +420,12 @@ class ContextPage(TrackFilterHost, Widget):
             subtitle_parts.append(str(year))
         subtitle_parts.append(f"{track_count} track{'s' if track_count != 1 else ''}")
 
-        header = Vertical(classes="context-header")
-        container.mount(header)
-        title_row = Horizontal(classes="context-header-row")
-        header.mount(title_row)
-        title_row.mount(Label("[b]Album[/b]", markup=True))
-        title_row.mount(Static("[+ Add to Library]", id="add-to-library-btn", markup=True))
-        header.mount(Label(title, classes="context-title"))
-        header.mount(Label(" \u00b7 ".join(subtitle_parts), classes="context-subtitle"))
+        lines = [" \u2022 ".join(subtitle_parts)]
         unavailable = len(raw_tracks) - track_count
         if unavailable:
-            header.mount(
-                Label(f"{unavailable} unavailable tracks hidden", classes="context-subtitle")
-            )
+            lines.append(f"{unavailable} unavailable tracks hidden")
+        kind = (data.get("type") or "Album").capitalize()
+        self._mount_hero(container, kind, title, lines, show_add=True, show_radio=False)
 
         table = TrackTable(show_album=False, id="context-tracks")
         container.mount(table)
@@ -396,26 +441,18 @@ class ContextPage(TrackFilterHost, Widget):
         track_count = len(tracks)
         total_count = data.get("trackCount") or track_count
 
-        subtitle = f"{owner} \u00b7 {track_count} track{'s' if track_count != 1 else ''}"
+        subtitle = f"{owner} \u2022 {track_count} track{'s' if track_count != 1 else ''}"
         if total_count > track_count:
             subtitle += f" (loading {total_count} total\u2026)"
 
-        header = Vertical(classes="context-header")
-        container.mount(header)
-        title_row = Horizontal(classes="context-header-row")
-        header.mount(title_row)
-        owned = data.get("owned", False)
-        title_row.mount(Label("[b]Playlist[/b]", markup=True))
-        if not owned:
-            title_row.mount(Static("[+ Add to Library]", id="add-to-library-btn", markup=True))
-        title_row.mount(Static("[▶ Start Radio]", id="start-radio-btn", markup=True))
-        header.mount(Label(title, classes="context-title"))
-        header.mount(Label(subtitle, classes="context-subtitle"))
+        lines = [subtitle]
+        if data.get("description"):
+            lines.append(str(data["description"]).splitlines()[0][:120])
         unavailable = len(raw_tracks) - track_count
         if unavailable:
-            header.mount(
-                Label(f"{unavailable} unavailable tracks hidden", classes="context-subtitle")
-            )
+            lines.append(f"{unavailable} unavailable tracks hidden")
+        owned = data.get("owned", False)
+        self._mount_hero(container, "Playlist", title, lines, show_add=not owned, show_radio=True)
 
         table = TrackTable(show_album=True, id="context-tracks")
         container.mount(table)
@@ -568,7 +605,11 @@ class ContextPage(TrackFilterHost, Widget):
         widget = event.widget
         if widget is None:
             return
-        if widget.id == "add-to-library-btn":
+        if widget.id in ("play-all-btn", "shuffle-all-btn"):
+            event.stop()
+            shuffle = widget.id == "shuffle-all-btn"
+            self.run_worker(self._play_all(shuffle=shuffle), group="play-all", exclusive=True)
+        elif widget.id == "add-to-library-btn":
             event.stop()
             self.run_worker(
                 self._add_to_library(), name="add_to_lib", group="add-to-library", exclusive=True
@@ -578,6 +619,16 @@ class ContextPage(TrackFilterHost, Widget):
             self.run_worker(
                 self._start_radio(), name="start_radio", group="start-radio", exclusive=True
             )
+
+    async def _play_all(self, *, shuffle: bool) -> None:
+        """The hero's Play and Shuffle buttons: play the whole list from the top."""
+        try:
+            tracks = self.query_one("#context-tracks", TrackTable).tracks
+        except Exception:
+            tracks = []
+        await cast("YTMHostBase", self.app)._replace_queue_and_play(
+            list(tracks), entity_id=self.context_id, start_index=0, shuffle=shuffle
+        )
 
     async def _add_to_library(self) -> None:
         """Add the current album or playlist to the user's library."""
@@ -603,7 +654,7 @@ class ContextPage(TrackFilterHost, Widget):
             self.app.notify("Added to library", timeout=2)
             try:
                 btn = self.query_one("#add-to-library-btn", Static)
-                btn.update("[✓ Added to Library]")
+                btn.update("✓  Saved")
             except Exception:
                 pass
             try:

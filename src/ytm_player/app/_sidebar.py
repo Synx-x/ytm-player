@@ -102,9 +102,7 @@ class SidebarMixin(YTMHostBase):
     def _toggle_album_art(self) -> None:
         """Toggle album art visibility in the playback bar."""
         try:
-            from ytm_player.ui.widgets.album_art import AlbumArt
-
-            art = self.query_one("#pb-art", AlbumArt)
+            art = self.query_one("#pb-art")  # AlbumArt, or Cover when real images are on
             art.display = not art.display
         except Exception:
             logger.debug("Failed to toggle album art visibility", exc_info=True)

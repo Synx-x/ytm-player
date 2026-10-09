@@ -54,6 +54,12 @@ def image_widget() -> type | None:
     return _image_widget
 
 
+def has_real_images() -> bool:
+    """True when covers draw as real images (kitty graphics), not half-blocks."""
+    widget = image_widget()
+    return widget is not None and widget.__name__ == "TGPImage"
+
+
 def best_thumbnail(item: dict, min_width: int = 226) -> str:
     """URL of the smallest thumbnail at least *min_width* wide, else the largest."""
     thumbs = item.get("thumbnails") or item.get("thumbnail") or []
@@ -128,6 +134,13 @@ class Cover(Container):
 
     def watch_url(self, url: str) -> None:
         self._load(url)
+
+    # Same interface as AlbumArt, so the playback bar can hold either.
+    def set_track(self, thumbnail_url: str = "") -> None:
+        self.url = thumbnail_url
+
+    def clear_track(self) -> None:
+        self.url = ""
 
     def _load(self, url: str) -> None:
         self._token += 1

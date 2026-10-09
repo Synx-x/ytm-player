@@ -13,6 +13,7 @@ or a tilt wheel scrolls it sideways, as on the web.
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any, cast
 
 from textual import events
@@ -34,6 +35,11 @@ logger = logging.getLogger(__name__)
 
 CARD_WIDTH = 24
 SCROLL_STEP = CARD_WIDTH * 3
+FEED_TTL_SECONDS = 600
+
+# The last Home feed, so coming back to Home is instant, as on the web.
+# (monotonic time, shelves). The r key always fetches a fresh feed.
+_feed_cache: tuple[float, list[dict[str, Any]]] | None = None
 _LOAD_FAILED = "Couldn't load your Home feed. Press r to try again."
 
 
@@ -172,16 +178,23 @@ class HomePage(Widget):
         self.run_worker(self._load(), exclusive=True, group="home-load")
 
     async def action_reload(self) -> None:
-        self.run_worker(self._load(), exclusive=True, group="home-load")
+        self.run_worker(self._load(fresh=True), exclusive=True, group="home-load")
 
-    async def _load(self) -> None:
+    async def _load(self, fresh: bool = False) -> None:
+        global _feed_cache
         host = cast("YTMHostBase", self.app)
         limit = max(get_settings().ui.home_shelves, 6)
-        try:
-            shelves = await host.ytmusic.get_home(limit=limit) if host.ytmusic else None
-        except Exception:
-            logger.exception("Failed to load the Home feed")
-            shelves = None
+        cached = _feed_cache
+        if not fresh and cached and time.monotonic() - cached[0] < FEED_TTL_SECONDS:
+            shelves: list[dict[str, Any]] | None = cached[1]
+        else:
+            try:
+                shelves = await host.ytmusic.get_home(limit=limit) if host.ytmusic else None
+            except Exception:
+                logger.exception("Failed to load the Home feed")
+                shelves = None
+            if shelves:
+                _feed_cache = (time.monotonic(), shelves)
         scroll = self.query_one("#home-scroll", VerticalScroll)
         await scroll.remove_children()
         if not shelves:

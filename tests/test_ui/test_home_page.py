@@ -47,6 +47,7 @@ class _Host(App):
 def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(home, "get_settings", lambda: SimpleNamespace(ui=SimpleNamespace(home_shelves=3)))
     monkeypatch.setattr(cover, "fetch_thumbnail", lambda url: None)
+    monkeypatch.setattr(home, "_feed_cache", None)
 
 
 async def _ready(pilot) -> None:
@@ -213,6 +214,24 @@ async def test_failed_load_shows_retry_and_r_reloads():
         await pilot.press("r")
         await _ready(pilot)
         assert app.query(HomeCard)
+
+
+async def test_coming_back_to_home_reuses_the_feed_and_r_refreshes_it():
+    app = _Host(_feed())
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        assert app.ytmusic.get_home.await_count == 1
+        page = app.query_one(HomePage)
+        await page.remove()
+        await app.mount(HomePage(id="page2"))
+        await _ready(pilot)
+        assert app.ytmusic.get_home.await_count == 1, "Home refetched instead of using the cache"
+        app.query_one("#page2").query(HomeCard).first().focus()
+        await pilot.pause()
+        await pilot.press("r")
+        for _ in range(10):
+            await pilot.pause()
+        assert app.ytmusic.get_home.await_count == 2
 
 
 async def test_footer_home_button_navigates_home():

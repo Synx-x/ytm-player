@@ -16,6 +16,7 @@ from textual.widget import Widget
 from ytm_player.services.queue import RepeatMode
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.album_art import AlbumArt
+from ytm_player.ui.widgets.cover import Cover, has_real_images
 from ytm_player.ui.widgets.progress_bar import PlaybackProgress
 from ytm_player.utils.formatting import extract_artist, truncate
 
@@ -314,6 +315,9 @@ class PlaybackBar(Widget):
         height: 3;
         margin: 0 1 0 0;
     }
+    PlaybackBar Cover#pb-art {
+        width: 7;
+    }
     PlaybackBar #pb-content {
         width: 1fr;
         height: auto;
@@ -339,7 +343,7 @@ class PlaybackBar(Widget):
 
         settings = get_settings()
         with Horizontal(id="pb-outer"):
-            art = AlbumArt(id="pb-art")
+            art: Widget = Cover(id="pb-art") if has_real_images() else AlbumArt(id="pb-art")
             if not settings.ui.album_art:
                 art.display = False
             yield art
@@ -371,7 +375,7 @@ class PlaybackBar(Widget):
     def update_track(self, track: dict | None) -> None:
         """Update displayed track information."""
         info = self.query_one("#pb-track-info", _TrackInfo)
-        art = self.query_one("#pb-art", AlbumArt)
+        art = cast("AlbumArt", self.query_one("#pb-art"))
 
         if track is None:
             info.title = ""
