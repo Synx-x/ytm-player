@@ -34,23 +34,27 @@ class LibraryPanel(Widget):
     """
 
     DEFAULT_CSS = """
+    /* No box: a quiet heading, then names only with room between them. */
     LibraryPanel {
         height: 1fr;
-        border: solid $secondary;
-        padding: 0 1;
+        padding: 1 1 0 1;
     }
 
     LibraryPanel .panel-title {
         text-style: bold;
-        color: $text;
+        color: $text-muted;
         height: 1;
-        padding: 0 0 0 0;
+        padding: 0 1;
+        margin-bottom: 1;
     }
 
     LibraryPanel .panel-count {
-        color: $text-muted;
-        dock: bottom;
-        height: 1;
+        display: none;
+    }
+
+    LibraryPanel ListView ListItem {
+        padding: 0 1;
+        margin-bottom: 1;
     }
 
     LibraryPanel ListView {
@@ -59,7 +63,7 @@ class LibraryPanel(Widget):
     }
 
     LibraryPanel ListView ListItem:hover {
-        background: $accent 30%;
+        background: $boost;
     }
 
     LibraryPanel.truncate-items ListView ListItem {
@@ -252,9 +256,7 @@ class LibraryPanel(Widget):
 
     def _format_item(self, item: dict[str, Any]) -> str:
         title = item.get("title", item.get("name", "Unknown"))
-        count = item.get("count")
-        if count is not None:
-            return f"{title} ({count} tracks)"
+        # Names only: the track count cut most names off mid-word.
         return title
 
     def _render_text(self, full_text: str) -> str:
@@ -456,19 +458,21 @@ class PlaylistSidebar(Widget):
         display: none;
     }
 
+    /* Same rhythm as the playlist list: one blank row between items. */
     #ps-pinned-nav {
         height: auto;
-        padding: 0 1;
+        padding: 1 1 0 1;
     }
 
     .ps-pinned-item {
         height: 1;
         padding: 0 1;
+        margin-bottom: 1;
         color: $text-muted;
     }
 
     .ps-pinned-item:hover {
-        background: $accent 30%;
+        background: $boost;
         color: $text;
     }
 
@@ -523,12 +527,12 @@ class PlaylistSidebar(Widget):
     def compose(self) -> ComposeResult:
         with Vertical(id="ps-pinned-nav"):
             # The web app's left menu: Home, Explore, Library.
-            yield Static("\u2302 Home", id="ps-nav-home", classes="ps-pinned-item")
-            yield Static("\u25ce Explore", id="ps-nav-explore", classes="ps-pinned-item")
-            yield Static("\u25a4 Library", id="ps-nav-library", classes="ps-pinned-item")
-            yield Static("\u2665 Liked Songs", id="ps-nav-liked", classes="ps-pinned-item")
-            yield Static("\u23f1 Recently Played", id="ps-nav-recent", classes="ps-pinned-item")
-            yield Static("\u266b Discovery Mix", id="ps-nav-discovery", classes="ps-pinned-item")
+            yield Static("\u2302  Home", id="ps-nav-home", classes="ps-pinned-item")
+            yield Static("\u25ce  Explore", id="ps-nav-explore", classes="ps-pinned-item")
+            yield Static("\u25a4  Library", id="ps-nav-library", classes="ps-pinned-item")
+            yield Static("\u2661  Liked Songs", id="ps-nav-liked", classes="ps-pinned-item")
+            yield Static("\u25f7  Recently Played", id="ps-nav-recent", classes="ps-pinned-item")
+            yield Static("\u2726  Discovery Mix", id="ps-nav-discovery", classes="ps-pinned-item")
         yield Rule(id="ps-separator")
         yield LibraryPanel("Playlists", id="ps-playlists", instant_select=True)
         yield Rule(id="ps-separator-bottom")

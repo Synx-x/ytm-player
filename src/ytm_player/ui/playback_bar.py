@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any, cast
 
+from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -27,6 +28,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Playback state symbols.
+# Fewest free columns on the artist line worth showing the selection in.
+_MIN_SELECTION_ROOM = 12
+
 _ICON_PLAYING = "\u25b6"  # Black right-pointing triangle
 _ICON_PAUSED = "\u2016"  # Double vertical line
 _ICON_STOPPED = "\u25a0"  # Black square
@@ -60,6 +64,8 @@ class _TrackInfo(Widget):
     album: reactive[str] = reactive("")
     is_playing: reactive[bool] = reactive(False)
     is_paused: reactive[bool] = reactive(False)
+    # The focused item in a list, shown on the artist line when it fits.
+    selection: reactive[str] = reactive("")
 
     def render(self) -> Text:
         theme = get_theme()
@@ -104,7 +110,24 @@ class _TrackInfo(Widget):
         else:
             result.append("No track playing", style=theme.muted_text)
 
+        self._append_selection(result, theme)
         return result
+
+    def _append_selection(self, result: Text, theme: Any) -> None:
+        """Add the focused item to the second line, dimmed, if it fits and is not the playing track."""
+        selection = self.selection.strip()
+        if not selection or (self.title and selection.startswith(self.title)):
+            return
+        used = result.cell_len if "\n" not in result.plain else cell_len(
+            result.plain.split("\n", 1)[1]
+        )
+        room = self.size.width - used - 5
+        if room < _MIN_SELECTION_ROOM:
+            return
+        if "\n" not in result.plain:
+            result.append("\n   ")
+        result.append("  \u203a  ", style=theme.muted_text)
+        result.append(truncate(selection, room), style=f"dim {theme.foreground}")
 
 
 # ── Interactive control widgets ───────────────────────────────────
@@ -344,7 +367,6 @@ class PlaybackBar(Widget):
 
     DEFAULT_CSS = """
     PlaybackBar {
-        dock: bottom;
         height: 6;
         background: $playback-bar-bg;
     }
@@ -386,10 +408,11 @@ class PlaybackBar(Widget):
         margin: 0 4;
         align: center middle;
     }
+    /* Cover and title read as one block: no gap, title on the middle row. */
     PlaybackBar #pb-art {
         width: 10;
         height: 3;
-        margin-right: 2;
+        margin-right: 1;
     }
     PlaybackBar Cover#pb-art {
         width: 6;
@@ -397,6 +420,13 @@ class PlaybackBar(Widget):
     PlaybackBar #pb-track-info {
         width: 1fr;
         height: 2;
+        margin-top: 1;
+    }
+    /* Like, volume, repeat and shuffle sit on the same middle row as the
+       play button, the time and the title. */
+    PlaybackBar #pb-heart, PlaybackBar #pb-right > * {
+        height: 3;
+        content-align: center middle;
     }
     PlaybackBar #pb-right {
         width: auto;
@@ -459,6 +489,10 @@ class PlaybackBar(Widget):
             await app.navigate_to("now_playing")
 
     # ── Public update methods ────────────────────────────────────────
+
+    def set_selection(self, text: str) -> None:
+        """Show the focused list item on the track info's second line, when it fits."""
+        self.query_one("#pb-track-info", _TrackInfo).selection = text or ""
 
     def update_track(self, track: dict | None) -> None:
         """Update displayed track information."""
@@ -624,21 +658,20 @@ class FooterBar(Widget):
         "search",
         "browse",
         "queue",
+        "recently_played",
         "help",
     }
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="footer-inner"):
-            # Playback controls (icon-only).
-            yield _FooterButton("\u23ee", "prev")
-            yield _FooterButton("\u23ef", "play_pause")
-            yield _FooterButton("\u23ed", "next")
+            # Playback controls live in the player bar above.
             # Page navigation.
             yield _FooterButton("Home", "home", id="footer-home")
             yield _FooterButton("Library", "library", id="footer-library")
             yield _FooterButton("Search", "search", id="footer-search")
             yield _FooterButton("Browse", "browse", id="footer-browse")
             yield _FooterButton("Queue", "queue", id="footer-queue")
+            yield _FooterButton("Recent", "recently_played", id="footer-recently_played")
             # Spotify import.
             yield _FooterButton("Import", "spotify_import")
             # Help pushed to far right.

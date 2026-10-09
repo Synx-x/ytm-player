@@ -42,7 +42,7 @@ async def test_menu_order_matches_the_web_app() -> None:
     app = _SidebarHost()
     async with app.run_test(size=(40, 30)):
         labels = [str(w.render()) for w in app.query(".ps-pinned-item")]
-        assert labels[:3] == ["⌂ Home", "◎ Explore", "▤ Library"]
+        assert labels[:3] == ["⌂  Home", "◎  Explore", "▤  Library"]
 
 
 async def test_active_page_is_highlighted_and_moves() -> None:
@@ -89,3 +89,15 @@ async def test_top_bar_search_opens_search_with_the_cursor_in_the_box() -> None:
             await pilot.pause()
         app.navigate_to.assert_awaited_once_with("search")
         assert app.focused is app.query_one("#search-input")
+
+
+async def test_menu_icons_are_one_cell_and_items_are_spaced_like_the_playlists():
+    from rich.cells import cell_len
+
+    app = _SidebarHost()
+    async with app.run_test(size=(40, 40)) as pilot:
+        await pilot.pause()
+        items = list(app.query(".ps-pinned-item"))
+        assert all(cell_len(str(i.render())[0]) == 1 for i in items)
+        ys = [i.region.y for i in items]
+        assert {b - a for a, b in zip(ys, ys[1:])} == {2}

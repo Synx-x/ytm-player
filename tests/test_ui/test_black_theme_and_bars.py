@@ -78,3 +78,103 @@ async def test_bar_icons_are_one_cell_greyscale_and_the_theme_colour_when_on():
         await pilot.pause()
         on = [shuffle.render(), repeat.render()]
         assert all(get_theme().primary in str(t.style) for t in on)
+
+
+async def test_title_like_and_controls_share_the_play_buttons_middle_row():
+    app = _Host()
+    async with app.run_test(size=(140, 20)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        bar.update_track({"title": "MOTTO", "artist": "NF", "album": "HOPE", "video_id": "v"})
+        await pilot.pause()
+        play = app.query_one("#pb-play").region
+        middle = play.y + play.height // 2
+        title_row = app.query_one("#pb-track-info").region.y
+        assert title_row == middle
+        for selector in ("#pb-time", "#pb-heart", "#pb-volume", "#pb-repeat", "#pb-shuffle"):
+            region = app.query_one(selector).region
+            assert region.y + region.height // 2 == middle, selector
+        art = app.query_one("#pb-art").region
+        assert app.query_one("#pb-track-info").region.x - art.right <= 1
+
+
+async def test_the_footer_has_no_second_set_of_transport_buttons():
+    from ytm_player.ui.playback_bar import FooterBar, _FooterButton
+
+    class _FooterHost(App):
+        def compose(self) -> ComposeResult:
+            yield FooterBar()
+
+    app = _FooterHost()
+    async with app.run_test(size=(140, 5)) as pilot:
+        await pilot.pause()
+        actions = [b._action for b in app.query(_FooterButton)]
+        assert not {"prev", "play_pause", "next"} & set(actions)
+
+
+async def test_the_footer_does_not_cover_the_player_bar():
+    """Regression: bar and footer both docked to the bottom, so the footer hid the bar's last row."""
+    from textual.containers import Vertical
+
+    from ytm_player.ui.playback_bar import FooterBar
+
+    class _StackHost(_Host):
+        CSS = "#bottom-stack { dock: bottom; height: auto; }"
+
+        def compose(self) -> ComposeResult:
+            with Vertical(id="bottom-stack"):
+                yield PlaybackBar(id="playback-bar")
+                yield FooterBar(id="app-footer")
+
+    app = _StackHost()
+    async with app.run_test(size=(140, 30)) as pilot:
+        await pilot.pause()
+        bar, footer = app.query_one("#playback-bar").region, app.query_one("#app-footer").region
+        assert bar.bottom <= footer.y
+
+
+async def test_the_footer_opens_recently_played_and_highlights_it():
+    from unittest.mock import AsyncMock
+
+    from ytm_player.ui.playback_bar import FooterBar
+
+    class _FooterHost(App):
+        def compose(self) -> ComposeResult:
+            yield FooterBar(id="app-footer")
+
+    app = _FooterHost()
+    app.navigate_to = AsyncMock()
+    async with app.run_test(size=(140, 5)) as pilot:
+        await pilot.click("#footer-recently_played")
+        await pilot.pause()
+        app.navigate_to.assert_awaited_once_with("recently_played")
+        app.query_one(FooterBar).set_active_page("recently_played")
+        assert app.query_one("#footer-recently_played").is_active
+
+
+async def test_the_selected_item_shows_on_the_artist_line_when_it_fits():
+    app = _Host()
+    async with app.run_test(size=(160, 20)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        bar.update_track({"title": "Die With A Smile", "artist": "Lady Gaga", "video_id": "v"})
+        bar.set_selection("Cruel Summer — Taylor Swift")
+        await pilot.pause()
+        line2 = str(app.query_one("#pb-track-info").render()).split("\n")[1]
+        assert "Lady Gaga" in line2 and "Cruel Summer — Taylor Swift" in line2
+
+
+async def test_the_selection_is_left_out_when_there_is_no_room_or_it_is_playing():
+    app = _Host()
+    async with app.run_test(size=(70, 20)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        bar.update_track({"title": "Die With A Smile", "artist": "Lady Gaga, Bruno Mars",
+                          "album": "MAYHEM", "video_id": "v"})  # fmt: skip
+        bar.set_selection("Cruel Summer — Taylor Swift")
+        await pilot.pause()
+        assert "Cruel" not in str(app.query_one("#pb-track-info").render())
+    app = _Host()
+    async with app.run_test(size=(160, 20)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        bar.update_track({"title": "Die With A Smile", "artist": "Lady Gaga", "video_id": "v"})
+        bar.set_selection("Die With A Smile — Lady Gaga")
+        await pilot.pause()
+        assert "›" not in str(app.query_one("#pb-track-info").render())

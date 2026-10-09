@@ -193,9 +193,8 @@ class YTMPlayerApp(
         height: 1fr;
     }
 
-    #playback-bar {
-        dock: bottom;
-    }
+    /* The player bar stacks in #bottom-stack above the footer. Docking it
+       too put the footer over the bar's last row. */
 
     _PlaceholderPage #placeholder-text {
         width: 1fr;
@@ -858,10 +857,11 @@ class YTMPlayerApp(
             startup = "library"
         await self.navigate_to(startup)
 
-        # Honour the [ui] show_selection_info toggle (TP-3).
+        # The selected item's name now shows in the player bar, when it fits
+        # (see [ui] show_selection_info), so the separate row stays hidden.
         try:
             bar = self.query_one("#selection-info-bar", SelectionInfoBar)
-            bar.display = self.settings.ui.show_selection_info
+            bar.display = False
         except Exception:
             logger.exception("Failed to apply show_selection_info toggle")
 
