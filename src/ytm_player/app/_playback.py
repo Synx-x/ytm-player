@@ -34,6 +34,10 @@ _YTM_PENDING_MAX = 100
 # frozen during pause. Best of both: focus-independent, pause-aware.
 _YTM_HISTORY_POLL_SECONDS = 1.0
 
+# Seconds a track row stays highlighted before the player resolves its stream
+# ahead of a play. A resolve takes about 2 s, and the web app is near 1 s.
+SPECULATE_DWELL = 0.5
+
 
 @dataclass
 class _LocalHistoryClaim:
@@ -691,6 +695,32 @@ class PlaybackMixin(YTMHostBase):
             self._prefetch_next_track()
         except Exception:
             logger.debug("Failed to prefetch next track", exc_info=True)
+
+    def on_track_table_track_highlighted(self, event: TrackTable.TrackHighlighted) -> None:
+        """Resolve the highlighted track's stream before the click, as the web app does.
+
+        A row must stay highlighted for ``SPECULATE_DWELL`` seconds first.
+        Resolves run one at a time, so a resolve for a row the cursor only
+        passed over would delay the track that is then played.
+        """
+        timer = getattr(self, "_speculate_timer", None)
+        if timer is not None:
+            timer.stop()
+        self._speculate_timer = None
+        video_id = get_video_id(event.track) if event.track else ""
+        if video_id and self.stream_resolver:
+            self._speculate_timer = self.set_timer(
+                SPECULATE_DWELL, lambda: self._speculate(video_id)
+            )
+
+    def _speculate(self, video_id: str) -> None:
+        self._speculate_timer = None
+        playing = self.player.current_track if self.player else None
+        if not self.stream_resolver or (playing and get_video_id(playing) == video_id):
+            return
+        self.run_worker(
+            self.stream_resolver.prefetch(video_id), group="speculate", exclusive=True
+        )
 
     def _prefetch_next_track(self) -> None:
         """Prefetch the next track's stream URL in the background.
