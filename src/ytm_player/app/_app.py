@@ -339,6 +339,20 @@ class YTMPlayerApp(
         # Persisted via session.json.
         self._mpris_hint_shown: bool = False
 
+    def _on_terminal_supports_synchronized_output(self, message) -> None:  # type: ignore[no-untyped-def]
+        """Keep Textual's synchronized output off while covers draw as kitty images.
+
+        With it on, a page of kitty covers sometimes stayed blank until the next
+        repaint. Verified live: staggered covers alone did not fix it, the two
+        together did.
+        """
+        from ytm_player.ui.widgets.cover import has_real_images
+
+        if has_real_images():
+            logger.debug("Synchronized output left off: kitty images are in use")
+            return
+        super()._on_terminal_supports_synchronized_output(message)
+
     def get_css_variables(self) -> dict[str, str]:
         """Inject app-specific CSS variables alongside Textual's theme variables.
 

@@ -215,7 +215,11 @@ async def navigate_browse_item(host: "YTMHostBase", item: dict[str, Any]) -> Non
     browse_id = item.get("browseId")
     playlist_id = item.get("playlistId") or item.get("audioPlaylistId")
 
-    if result_type in ("song", "video", "flat_song") or video_id:
+    if playlist_id == "LM":
+        # "Liked Music" is a virtual playlist the playlist page cannot load
+        # ("No data found"). The Liked Songs page is built for it.
+        await host.navigate_to("liked_songs")
+    elif result_type in ("song", "video", "flat_song") or video_id:
         normalized_tracks = normalize_tracks([item])
         track_to_play = normalized_tracks[0] if normalized_tracks else item
         # Replace the queue instead of playing around it — otherwise the

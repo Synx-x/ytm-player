@@ -43,10 +43,26 @@ _feed_cache: tuple[float, list[dict[str, Any]]] | None = None
 _LOAD_FAILED = "Couldn't load your Home feed. Press r to try again."
 
 
+def relayout_soon(widget: Widget) -> None:
+    """Run one full screen layout pass just after a burst of cards mounts.
+
+    Cards mounted after their page sometimes stay unpainted in kitty until the
+    user scrolls. A scroll fixes it by laying out the screen again, so do the
+    same once the cards exist.
+    """
+    widget.set_timer(0.15, lambda: widget.screen.refresh(layout=True))
+
+
 def card_subtitle(item: dict[str, Any]) -> str:
     """Second line under a card, the way the web shows it."""
     artists = ", ".join(a.get("name", "") for a in item.get("artists") or [] if a.get("name"))
     kind = (item.get("resultType") or item.get("type") or "").capitalize()
+    if item.get("count") is not None:  # a library playlist
+        author = item.get("author")
+        owner = author[0].get("name", "") if isinstance(author, list) and author else ""
+        count = str(item["count"]).replace(",", "")
+        unit = "song" if count == "1" else "songs"
+        return " • ".join(p for p in ("Playlist", owner, f"{count} {unit}") if p)
     if artists and kind in ("Album", "Single", "Ep"):
         return f"{kind} • {artists}"
     if artists:
@@ -78,8 +94,10 @@ class HomeCard(Vertical, can_focus=True):
     DEFAULT_CSS = f"""
     HomeCard {{ width: {CARD_WIDTH}; height: 16; margin-right: 2; }}
     HomeCard > Cover {{ width: {CARD_WIDTH - 2}; height: 11; }}
-    HomeCard > .card-title {{ width: {CARD_WIDTH - 2}; height: 1; margin-top: 1; text-style: bold; }}
-    HomeCard > .card-sub {{ width: {CARD_WIDTH - 2}; height: 1; color: $text-muted; }}
+    HomeCard > .card-title {{ width: {CARD_WIDTH - 2}; height: 1; margin-top: 1; text-style: bold;
+        text-wrap: nowrap; text-overflow: ellipsis; }}
+    HomeCard > .card-sub {{ width: {CARD_WIDTH - 2}; height: 1; color: $text-muted;
+        text-wrap: nowrap; text-overflow: ellipsis; }}
     HomeCard:hover > .card-title {{ text-style: bold underline; }}
     HomeCard:focus > .card-title {{ color: $accent; text-style: bold underline; }}
     """
@@ -205,10 +223,7 @@ class HomePage(Widget):
             Shelf(_clean_shelf_title(s.get("title", "")), [c for c in s["contents"] if c])
             for s in self._shelves
         )
-        # A cached feed mounts in the same tick as the page itself, and nothing
-        # else asks for a repaint afterwards: the shelves were laid out but not
-        # drawn until the user scrolled. Ask for the repaint explicitly.
-        self.call_after_refresh(scroll.refresh, layout=True)
+        relayout_soon(self)
 
     # ── keyboard ──────────────────────────────────────────────────
 

@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, ItemGrid, Vertical, VerticalScroll
 from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Input, Label, Static
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.pages.home import CARD_WIDTH, HomeCard, relayout_soon
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
 from ytm_player.ui.widgets.track_table import TrackTable
 from ytm_player.utils.formatting import build_playlist_subtitle, normalize_tracks
@@ -21,6 +23,11 @@ if TYPE_CHECKING:
     from ytm_player.app._base import YTMHostBase
 
 logger = logging.getLogger(__name__)
+
+GRID_TTL_SECONDS = 600
+# The last playlist list the grid showed, so going back to Library is instant,
+# as it is for Home. (monotonic time, playlists).
+_grid_cache: tuple[float, list[dict[str, Any]]] | None = None
 
 
 class LibraryPage(TrackFilterHost, Widget):
@@ -113,6 +120,22 @@ class LibraryPage(TrackFilterHost, Widget):
     #library-tracks {
         height: 1fr;
     }
+
+    #library-grid-scroll {
+        height: 1fr;
+        padding: 1 3;
+    }
+
+    #library-grid-title {
+        text-style: bold;
+        height: 1;
+        margin-bottom: 1;
+    }
+
+    #library-grid {
+        height: auto;
+        grid-gutter: 1 2;
+    }
     """
         + TRACK_FILTER_CSS
     )
@@ -128,12 +151,15 @@ class LibraryPage(TrackFilterHost, Widget):
         *,
         playlist_id: str | None = None,
         cursor_row: int | None = None,
+        grid: bool = False,
         name: str | None = None,
         id: str | None = None,
         classes: str | None = None,
     ) -> None:
         super().__init__(name=name, id=id, classes=classes)
         self._active_playlist_id: str | None = playlist_id
+        # The web app's Library view: every playlist as a cover card.
+        self._grid = grid and playlist_id is None
         self._restore_cursor_row: int | None = cursor_row
         self._cached_owner: str = "Unknown"
         self._cached_year: int | str | None = None
@@ -141,6 +167,9 @@ class LibraryPage(TrackFilterHost, Widget):
 
     def compose(self) -> ComposeResult:
         yield Vertical(id="content-header")
+        with VerticalScroll(id="library-grid-scroll"):
+            yield Static("Your playlists", id="library-grid-title")
+            yield ItemGrid(id="library-grid", min_column_width=CARD_WIDTH)
         yield Static("Select a playlist from the sidebar", id="empty-state")
         yield Static("Loading...", id="loading-state")
         yield TrackTable(show_album=True, id="library-tracks")
@@ -150,6 +179,11 @@ class LibraryPage(TrackFilterHost, Widget):
         self.query_one("#loading-state").display = False
         self.query_one("#library-tracks").display = False
         self.query_one("#content-header").display = False
+        self.query_one("#library-grid-scroll").display = self._grid
+        if self._grid:
+            self.query_one("#empty-state").display = False
+            self.run_worker(self._load_grid(), group="library-grid", exclusive=True)
+            return
 
         # Auto-load if a playlist_id was provided.
         if self._active_playlist_id:
@@ -164,6 +198,8 @@ class LibraryPage(TrackFilterHost, Widget):
     def get_nav_state(self) -> dict[str, Any]:
         """Return state to preserve when navigating away."""
         state: dict[str, Any] = {}
+        if self._grid:
+            return {"grid": True}
         if self._active_playlist_id:
             state["playlist_id"] = self._active_playlist_id
         try:
@@ -177,6 +213,36 @@ class LibraryPage(TrackFilterHost, Widget):
     # ------------------------------------------------------------------
     # Data loading
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def invalidate_grid_cache() -> None:
+        """Forget the cached playlists, after a playlist is added, removed or renamed."""
+        global _grid_cache
+        _grid_cache = None
+
+    async def _load_grid(self) -> None:
+        """Fill the Library grid with the account's playlists, as cover cards."""
+        global _grid_cache
+        grid = self.query_one("#library-grid", ItemGrid)
+        cached = _grid_cache
+        if cached and time.monotonic() - cached[0] < GRID_TTL_SECONDS:
+            playlists = cached[1]
+        else:
+            await grid.mount(Static("Loading your playlists…", classes="home-status"))
+            ytmusic = getattr(self.app, "ytmusic", None)
+            try:
+                playlists = await ytmusic.get_library_playlists(limit=None) if ytmusic else []
+            except Exception:
+                logger.exception("Failed to load library playlists for the grid")
+                playlists = []
+            if playlists:
+                _grid_cache = (time.monotonic(), playlists)
+        await grid.remove_children()
+        if not playlists:
+            await grid.mount(Static("No playlists yet.", classes="home-status"))
+            return
+        await grid.mount_all(HomeCard(p) for p in playlists)
+        relayout_soon(self)
 
     # First batch size for progressive playlist loading.
     _FIRST_BATCH = 300

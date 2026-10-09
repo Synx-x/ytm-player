@@ -562,6 +562,9 @@ class PlaylistSidebar(Widget):
 
     async def refresh_playlists(self) -> None:
         """Force-reload playlists."""
+        from ytm_player.ui.pages.library import LibraryPage
+
+        LibraryPage.invalidate_grid_cache()  # the Library grid shows the same list
         self._loaded = False
         await self.ensure_loaded()
 

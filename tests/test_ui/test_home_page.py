@@ -128,6 +128,19 @@ async def test_opening_a_card_that_replaces_the_page_does_not_hang():
         assert not app.query(HomePage)
 
 
+async def test_liked_music_card_opens_the_liked_songs_page():
+    """Regression: the playlist page shows "No data found" for the virtual LM playlist."""
+    liked = {"title": "Liked Music", "playlistId": "LM", "description": "Auto playlist",
+             "thumbnails": [{"url": "u4", "width": 226}]}  # fmt: skip
+    app = _Host([{"title": "Listen again", "contents": [liked]}])
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        await pilot.click(HomeCard)
+        for _ in range(5):
+            await pilot.pause()
+        app.navigate_to.assert_awaited_once_with("liked_songs")
+
+
 async def test_enter_on_focused_card_opens_it():
     app = _Host(_feed())
     async with app.run_test(size=(160, 50)) as pilot:
