@@ -58,6 +58,7 @@ class Action(str, Enum):
     QUIT = "quit"
 
     # Pages
+    HOME = "home"
     LIBRARY = "library"
     SEARCH = "search"
     BROWSE = "browse"
@@ -140,6 +141,7 @@ DEFAULT_BINDINGS: dict[str, list[str]] = {
     "go_forward": ["S-backspace"],
     "quit": ["q", "C-q"],
     # Pages
+    "home": ["g h"],
     "library": ["g l"],
     "search": ["g s"],
     "browse": ["g b"],

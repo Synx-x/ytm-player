@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 # Valid page names.
 PAGE_NAMES = (
+    "home",
     "library",
     "search",
     "context",
@@ -248,6 +249,7 @@ class NavigationMixin(YTMHostBase):
         from ytm_player.ui.pages.browse import BrowsePage
         from ytm_player.ui.pages.context import ContextPage
         from ytm_player.ui.pages.help import HelpPage
+        from ytm_player.ui.pages.home import HomePage
         from ytm_player.ui.pages.library import LibraryPage
         from ytm_player.ui.pages.liked_songs import LikedSongsPage
         from ytm_player.ui.pages.queue import QueuePage
@@ -255,6 +257,7 @@ class NavigationMixin(YTMHostBase):
         from ytm_player.ui.pages.search import SearchPage
 
         page_map: dict[str, type[Widget]] = {
+            "home": HomePage,
             "library": LibraryPage,
             "search": SearchPage,
             "context": ContextPage,

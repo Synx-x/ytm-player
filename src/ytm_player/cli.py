@@ -204,6 +204,9 @@ def main(ctx: click.Context, compact_json: bool, debug: bool) -> None:
 
         from ytm_player.app import YTMPlayerApp
 
+        from ytm_player.ui.widgets.cover import prime_image_support
+
+        prime_image_support()  # textual-image must query the terminal before Textual starts
         app = YTMPlayerApp()
         app.run()
 

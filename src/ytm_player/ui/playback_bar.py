@@ -479,6 +479,7 @@ class _FooterButton(Widget):
         match self._action:
             case (
                 "help"
+                | "home"
                 | "library"
                 | "search"
                 | "queue"
@@ -519,6 +520,7 @@ class FooterBar(Widget):
 
     # Page actions that get an active-page highlight.
     _PAGE_ACTIONS = {
+        "home",
         "library",
         "search",
         "browse",
@@ -533,6 +535,7 @@ class FooterBar(Widget):
             yield _FooterButton("\u23ef", "play_pause")
             yield _FooterButton("\u23ed", "next")
             # Page navigation.
+            yield _FooterButton("Home", "home", id="footer-home")
             yield _FooterButton("Library", "library", id="footer-library")
             yield _FooterButton("Search", "search", id="footer-search")
             yield _FooterButton("Browse", "browse", id="footer-browse")

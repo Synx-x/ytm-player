@@ -222,6 +222,8 @@ class KeyHandlingMixin(YTMHostBase):
                 self.notify(f"Shuffle: {state}", timeout=2)
 
             # -- Page navigation --
+            case Action.HOME:
+                await self.navigate_to("home")
             case Action.LIBRARY:
                 await self.navigate_to("library")
             case Action.SEARCH:
