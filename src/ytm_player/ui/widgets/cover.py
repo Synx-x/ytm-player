@@ -1,9 +1,12 @@
 """Cover art drawn as a real image where the terminal supports one.
 
-The widget downloads a thumbnail once into a disk cache, then mounts a
-textual-image widget. Under kitty that draws the full-resolution picture
-through the kitty graphics protocol. Without textual-image, or in a terminal
-with no graphics protocol, it falls back to the half-block renderer.
+A cover downloads its thumbnail once into a disk cache, shrinks it to its own
+pixel size in a worker thread, then draws it itself. Under kitty that is the
+full picture through the kitty graphics protocol. Elsewhere it is half-blocks.
+
+The cover draws the image in ``render()`` instead of mounting a child widget.
+A mount re-lays-out the whole screen, and a page of 100 covers then blocked
+the UI thread for seconds. A new image now only repaints its own cover.
 
 textual-image has to query the terminal before Textual takes over stdin, so
 ``prime_image_support()`` must run before ``App.run()``. The CLI does that.
@@ -15,13 +18,14 @@ import asyncio
 import hashlib
 import logging
 import os
+import time
 from pathlib import Path
+from typing import Any
 from urllib.request import Request, urlopen
 
-from textual.app import ComposeResult
-from textual.containers import Container
+from rich.text import Text
 from textual.reactive import reactive
-from textual.widgets import Static
+from textual.widget import Widget
 
 from ytm_player.config.paths import CACHE_DIR
 
@@ -29,81 +33,53 @@ logger = logging.getLogger(__name__)
 
 THUMB_DIR = CACHE_DIR.parent / "covers"  # CACHE_DIR is the audio cache
 _TIMEOUT = 8
-_FIRST_PAINT_DELAY = 0.12  # seconds: several frames at Textual's 60 fps
-_IMAGE_GAP = 0.03  # seconds between kitty images: about two frames
+_FIRST_PAINT_DELAY = 0.12  # seconds: the page lays out and paints its text first
+_IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
+_PLACEHOLDER = "♫"
+
+_renderable_cls: type | None = None
+_kitty = False
+_primed = False
 _image_lock: asyncio.Lock | None = None
 
 
 def _image_turn() -> asyncio.Lock:
-    """The lock that lets one cover at a time mount its kitty image."""
+    """One cover at a time sends its kitty image, so the terminal never gets a burst."""
     global _image_lock
     if _image_lock is None:
         _image_lock = asyncio.Lock()
     return _image_lock
-_image_widget: type | None = None
-_primed = False
 
 
 def prime_image_support() -> None:
     """Import textual-image while the terminal can still answer its queries."""
-    global _image_widget, _primed
+    global _renderable_cls, _kitty, _primed
     _primed = True
     try:
         from textual_image.renderable import Image as AutoRenderable
+        from textual_image.renderable.halfcell import Image as HalfcellRenderable
         from textual_image.renderable.tgp import Image as TGPRenderable
-        from textual_image.widget import HalfcellImage, TGPImage
 
-        use_kitty = AutoRenderable is TGPRenderable and os.environ.get("YTM_COVERS") != "halfcell"
-        _image_widget = _cached_kitty_image(TGPImage) if use_kitty else HalfcellImage
-        _route_kitty_messages_through_textual()
+        _kitty = AutoRenderable is TGPRenderable and os.environ.get("YTM_COVERS") != "halfcell"
+        _renderable_cls = TGPRenderable if _kitty else HalfcellRenderable
+        if _kitty:
+            _route_kitty_messages_through_textual()
+    except ImportError:
+        logger.debug("textual-image not installed, covers use the built-in half-blocks")
+        _renderable_cls, _kitty = None, False
     except Exception:
-        logger.debug("textual-image unavailable, covers use half-blocks", exc_info=True)
-        _image_widget = None
-
-
-def _cached_kitty_image(base: type) -> type:
-    """A kitty image widget that encodes and sends its picture once per size.
-
-    textual-image builds a new renderable on every render: it rescales the
-    picture, encodes it and sends it to kitty again. A grid re-lays-out once per
-    card it mounts, so 20 covers cost about 200 encodes on the UI thread, and
-    the page stayed blank for seconds. This keeps the renderable while the
-    widget's size is unchanged, and deletes the image from kitty on unmount,
-    which textual-image never does.
-    """
-
-    class CachedKittyImage(base):  # type: ignore[valid-type, misc]
-        _render_key: object = None
-
-        def render(self):  # type: ignore[no-untyped-def]
-            if not self._image:
-                return ""
-            key = (self._get_styled_size(), self.size)
-            if self._renderable is not None and key == self._render_key:
-                return self._renderable
-            self._render_key = key
-            return super().render()
-
-        def on_unmount(self) -> None:
-            if self._renderable is not None:
-                self._renderable.cleanup()
-                self._renderable = None
-
-    CachedKittyImage.__name__ = "TGPImage"  # has_real_images() checks this name
-    return CachedKittyImage
+        # Installed but broken. Say so, or covers quietly lose their images.
+        logger.warning("textual-image failed to start, covers use half-blocks", exc_info=True)
+        _renderable_cls, _kitty = None, False
 
 
 def _route_kitty_messages_through_textual() -> None:
-    """Send textual-image's kitty graphics messages through Textual's driver.
-
-    It also narrows the library's image deletes to the one image meant.
+    """Send textual-image's kitty messages through Textual's driver, and narrow its deletes.
 
     textual-image writes each image straight to ``sys.__stdout__`` while it
-    renders, but Textual writes its frames from a separate writer thread. With
-    many covers rendering at once the two writers interleave, which corrupts
-    the frame: covers and the text around them stay blank. Writing through the
-    driver queues each image message in order, just before the frame that
-    shows it.
+    renders, and Textual writes frames from its own writer thread. The two
+    interleaved and corrupted frames. Through the driver, each image message is
+    queued just before the frame that shows it.
     """
     from textual._context import active_app
     from textual_image.renderable import tgp
@@ -114,10 +90,8 @@ def _route_kitty_messages_through_textual() -> None:
 
     def routed(*, payload: str | None = None, **kwargs: int | str | None) -> None:
         if kwargs.get("a") == "d" and "d" not in kwargs and kwargs.get("I") is not None:
-            # textual-image cleans up with ``a=d,I=<id>``. In the kitty protocol a
-            # delete with no ``d`` key removes every image on screen, and ``I`` is
-            # an image number, not the id it transmitted with. So leaving one page
-            # wiped the next page's covers. Delete only this image, and free it.
+            # textual-image deletes with ``a=d,I=<id>``. To kitty that removes every
+            # image on screen. Delete only this image by its id, and free its data.
             kwargs = {"a": "d", "d": "I", "i": kwargs["I"], "q": 2}
         app = active_app.get(None)
         driver = getattr(app, "_driver", None)
@@ -138,17 +112,17 @@ def _route_kitty_messages_through_textual() -> None:
     tgp._send_tgp_message = routed
 
 
-def image_widget() -> type | None:
-    """The textual-image widget class to use, or None for the half-block fallback."""
+def renderable_class() -> type | None:
+    """The textual-image renderable covers draw with, or None for the built-in half-blocks."""
     if not _primed:
         prime_image_support()
-    return _image_widget
+    return _renderable_cls
 
 
 def has_real_images() -> bool:
     """True when covers draw as real images (kitty graphics), not half-blocks."""
-    widget = image_widget()
-    return widget is not None and widget.__name__ == "TGPImage"
+    renderable_class()
+    return _kitty
 
 
 def best_thumbnail(item: dict, min_width: int = 226) -> str:
@@ -191,8 +165,8 @@ def fetch_thumbnail(url: str) -> Path | None:
 def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
     """A copy of *path* sized for *cols* x *rows* terminal cells, cached beside it.
 
-    Blocking; run it in a thread. Returns *path* unchanged when the cell size
-    is unknown or the copy cannot be made.
+    Blocking. Run it in a thread. Returns *path* unchanged when the cell size is
+    unknown or the copy cannot be made.
     """
     try:
         from PIL import Image
@@ -214,36 +188,44 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
         return path
 
 
-class Cover(Container):
-    """A fixed-size cover that shows a placeholder until the image arrives."""
+def _half_blocks(path: Path, cols: int, rows: int) -> Text | None:
+    """The built-in half-block picture, for when textual-image is not installed."""
+    try:
+        from ytm_player.ui.widgets.album_art import AlbumArt
+
+        return AlbumArt._image_to_half_blocks(path.read_bytes(), cols, rows)
+    except Exception:
+        logger.debug("Half-block cover failed: %s", path, exc_info=True)
+        return None
+
+
+class Cover(Widget):
+    """A fixed-size cover. It shows ♫ until its picture is ready, then draws the picture."""
 
     DEFAULT_CSS = """
     Cover {
         width: 22;
         height: 11;
         background: $surface;
-    }
-    Cover > .cover-placeholder {
-        width: 1fr;
-        height: 1fr;
-        content-align: center middle;
         color: $text-muted;
-    }
-    Cover > .cover-image {
-        width: 1fr;
-        height: 1fr;
+        content-align: center middle;
     }
     """
 
     url: reactive[str] = reactive("", init=False)
 
-    def __init__(self, url: str = "", **kwargs) -> None:
+    def __init__(self, url: str = "", **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.set_reactive(Cover.url, url)
         self._token = 0
+        self._path: Path | None = None
+        self._picture: Any = None
+        self._picture_size: tuple[int, int] = (0, 0)
 
-    def compose(self) -> ComposeResult:
-        yield Static("♫", classes="cover-placeholder")
+    def render(self) -> Any:
+        if self._picture is not None:
+            return self._picture
+        return Text(_PLACEHOLDER)
 
     def on_mount(self) -> None:
         if self.url:
@@ -252,6 +234,13 @@ class Cover(Container):
     def watch_url(self, url: str) -> None:
         self._load(url)
 
+    def on_resize(self) -> None:
+        if self._path is not None and (self.size.width, self.size.height) != self._picture_size:
+            self._load(self.url)
+
+    def on_unmount(self) -> None:
+        self._drop_picture()
+
     # Same interface as AlbumArt, so the playback bar can hold either.
     def set_track(self, thumbnail_url: str = "") -> None:
         self.url = thumbnail_url
@@ -259,46 +248,47 @@ class Cover(Container):
     def clear_track(self) -> None:
         self.url = ""
 
+    def _drop_picture(self) -> None:
+        """Forget the picture, and delete it from kitty if it was a kitty image."""
+        picture, self._picture = self._picture, None
+        cleanup = getattr(picture, "cleanup", None)
+        if cleanup is not None:
+            try:
+                cleanup()
+            except Exception:
+                logger.debug("Cover cleanup failed", exc_info=True)
+
     def _load(self, url: str) -> None:
         self._token += 1
-        token = self._token
-        self.run_worker(self._fetch_and_show(url, token), exclusive=True, group="cover")
+        self.run_worker(self._fetch_and_show(url, self._token), exclusive=True, group="cover")
 
     async def _fetch_and_show(self, url: str, token: int) -> None:
+        started = time.monotonic()
         path = await asyncio.to_thread(fetch_thumbnail, url) if url else None
-        if path is not None and has_real_images():
-            # Shrink the picture to this cover's pixel size off the UI thread,
-            # so the kitty encode that runs while drawing stays cheap.
-            path = await asyncio.to_thread(shrink_to_cells, path, self.size.width, self.size.height)
-        # Let the page paint its text before any kitty image arrives. A cover
-        # already on disk otherwise renders in the same frame as the page's
-        # first paint, and kitty then shows neither the covers nor the text
-        # around them until something redraws the screen.
-        await asyncio.sleep(_FIRST_PAINT_DELAY)
+        await asyncio.sleep(_FIRST_PAINT_DELAY)  # layout first: the size is 0 before it
         if token != self._token or not self.is_attached:
             return
-        await self.remove_children()
-        widget_cls = image_widget()
-        if path is None:
-            await self.mount(Static("♫", classes="cover-placeholder"))
+        cols, rows = self.size.width, self.size.height
+        self._path = path
+        if path is None or not cols or not rows:
+            self._drop_picture()
+            self._picture_size = (0, 0)
+            self.refresh()
             return
-        if widget_cls is None:
-            from ytm_player.ui.widgets.album_art import AlbumArt
-
-            art = AlbumArt(classes="cover-image")
-            await self.mount(art)
-            art.set_track(url)
-            return
-        try:
-            # One kitty image at a time, with a short gap. A burst of cached
-            # covers rendering together left the page blank in kitty, while
-            # covers that arrived one by one from the network always drew.
-            async with _image_turn():
-                if token != self._token or not self.is_attached:
-                    return
-                await self.mount(widget_cls(str(path), classes="cover-image"))
+        renderable = renderable_class()
+        if renderable is None:
+            picture: Any = await asyncio.to_thread(_half_blocks, path, cols, rows)
+        else:
+            if has_real_images():
+                # The kitty encode runs while drawing, so hand it a small file.
+                path = await asyncio.to_thread(shrink_to_cells, path, cols, rows)
+            picture = await asyncio.to_thread(renderable, str(path), cols, rows)
+        async with _image_turn():
+            if token != self._token or not self.is_attached:
+                return
+            self._drop_picture()
+            self._picture, self._picture_size = picture, (cols, rows)
+            self.refresh()  # repaint only: no layout, the cover's size never changes
+            if has_real_images():
                 await asyncio.sleep(_IMAGE_GAP)
-        except Exception:
-            logger.debug("Cover render failed: %s", url, exc_info=True)
-            await self.mount(Static("♫", classes="cover-placeholder"))
-            return
+        logger.debug("cover ready in %.2fs: %s", time.monotonic() - started, url[-24:])

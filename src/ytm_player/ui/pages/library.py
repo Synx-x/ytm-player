@@ -241,7 +241,9 @@ class LibraryPage(TrackFilterHost, Widget):
         if not playlists:
             await grid.mount(Static("No playlists yet.", classes="home-status"))
             return
+        mount_started = time.monotonic()
         await grid.mount_all(HomeCard(p) for p in playlists)
+        logger.debug("library grid: %d cards mounted in %.2fs", len(playlists), time.monotonic() - mount_started)
         relayout_soon(self)
 
     # First batch size for progressive playlist loading.
