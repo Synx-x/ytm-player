@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -18,6 +20,7 @@ else:
     # Python 3.10 backport via PyPI
     from typing_extensions import Self  # pyright: ignore[reportMissingImports]
 
+from textual.color import Color
 from textual.theme import Theme
 
 from ytm_player.config.paths import THEME_FILE
@@ -82,6 +85,92 @@ YTM_DARK = Theme(
         # This keeps lyric coloring theme-aware on every theme.
     },
 )
+
+# ── Graphite theme — tonal regions, primary from the desktop wallpaper ─
+
+GRAPHITE_NAME = "graphite"
+
+# Fallback primary when no Caelestia scheme is readable: YouTube red.
+YOUTUBE_RED = "#ff0000"
+
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+
+
+def caelestia_scheme_path() -> Path:
+    """Return the Caelestia shell's generated colour scheme file.
+
+    Caelestia rewrites this file whenever the wallpaper changes, so the
+    graphite theme follows the desktop colours.
+    """
+    state_home = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
+    return Path(state_home) / "caelestia" / "scheme.json"
+
+
+def caelestia_primary(path: Path | None = None) -> str | None:
+    """Read ``colours.primary`` from the Caelestia scheme as ``#rrggbb``.
+
+    Returns None when the file is missing, unreadable or holds no valid
+    hex colour. Caelestia stores the hex without a leading ``#``.
+    """
+    scheme = path or caelestia_scheme_path()
+    try:
+        data = json.loads(scheme.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    colours = data.get("colours") if isinstance(data, dict) else None
+    value = colours.get("primary") if isinstance(colours, dict) else None
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lstrip("#")
+    if len(value) != 6 or not set(value) <= _HEX_DIGITS:
+        return None
+    return f"#{value.lower()}"
+
+
+def build_graphite_theme(primary: str | None = None) -> Theme:
+    """Build the graphite theme around ``primary``.
+
+    Regions separate by background tone, not by border lines. The
+    selected-item tint and the accent derive from ``primary``, so the
+    whole highlight set follows the wallpaper. With no ``primary``, the
+    Caelestia scheme is read, then YouTube red is used.
+    """
+    primary = primary or caelestia_primary() or YOUTUBE_RED
+    base = Color.parse(primary)
+    panel = Color.parse("#121215")
+    accent = base.blend(Color(255, 255, 255), 0.3).hex.lower()
+    selected = panel.blend(base, 0.14).hex.lower()
+    return Theme(
+        name=GRAPHITE_NAME,
+        primary=primary,
+        secondary="#a6a6b0",
+        accent=accent,
+        success="#5fd08f",
+        warning="#f0b354",
+        error="#ff6b80",
+        foreground="#ededf0",
+        background="#0d0d0f",
+        surface="#17171b",
+        panel="#121215",
+        boost="#1c1c21",
+        dark=True,
+        variables={
+            # Textual derives $border from primary. Graphite separates
+            # regions by tone, so rules drop to a faint hairline.
+            "border": "#1e1e23",
+            "border-blurred": "#1e1e23",
+            "panel-frame": "transparent",
+            "playback-bar-bg": "#17171b",
+            "active-tab": "#ededf0",
+            "inactive-tab": "#a6a6b0",
+            "selected-item": selected,
+            "progress-filled": primary,
+            "progress-empty": "#2a2a31",
+            "lyrics-played": "#8a8a95",
+            "lyrics-current": accent,
+            "lyrics-upcoming": "#a6a6b0",
+        },
+    )
 
 
 @dataclass

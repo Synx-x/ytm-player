@@ -61,6 +61,8 @@ from ytm_player.ui.theme import DEFAULT_LYRIC_CURRENT, ThemeColors, get_theme
 logger = logging.getLogger(__name__)
 
 _POSITION_POLL_INTERVAL = 0.5
+# Seconds between checks of the Caelestia scheme file for a new wallpaper.
+_CAELESTIA_POLL_INTERVAL = 2.0
 
 # Cache for theme.toml so get_css_variables doesn't re-parse TOML on
 # every CSS resolution.  Invalidated when the file's mtime changes
@@ -170,6 +172,12 @@ class YTMPlayerApp(
         width: 1fr;
     }
 
+    /* $panel-frame is an app variable, so the override lives here rather
+       than in LibraryPanel's DEFAULT_CSS, which test apps load alone. */
+    LibraryPanel {
+        border: solid $panel-frame;
+    }
+
     #bottom-stack {
         dock: bottom;
         height: auto;
@@ -204,9 +212,11 @@ class YTMPlayerApp(
         super().__init__()
 
         # Register custom YTM theme and set the configured default.
-        from ytm_player.ui.theme import YTM_DARK
+        from ytm_player.ui.theme import YTM_DARK, build_graphite_theme
 
         self.register_theme(YTM_DARK)
+        self.register_theme(build_graphite_theme())
+        self._graphite_scheme_mtime: float | None = None
 
         # Configuration.
         self.settings: Settings = get_settings()
@@ -361,6 +371,9 @@ class YTMPlayerApp(
                 "accent", variables.get("primary", DEFAULT_LYRIC_CURRENT)
             ),
             "lyrics-upcoming": variables.get("text", "#aaaaaa"),
+            # Frame around the sidebar's playlist box. Themes that separate
+            # regions by tone set it to transparent.
+            "panel-frame": variables.get("secondary", "#aaaaaa"),
         }
         for key, default in app_defaults.items():
             if key not in variables:
@@ -398,6 +411,29 @@ class YTMPlayerApp(
                     variables[css_name] = colors[field_name]
 
         return variables
+
+    @staticmethod
+    def _caelestia_scheme_mtime() -> float | None:
+        from ytm_player.ui.theme import caelestia_scheme_path
+
+        try:
+            return caelestia_scheme_path().stat().st_mtime
+        except OSError:
+            return None
+
+    def _poll_caelestia_scheme(self) -> None:
+        """Rebuild graphite when Caelestia writes a new wallpaper scheme."""
+        from ytm_player.ui.theme import GRAPHITE_NAME, build_graphite_theme
+
+        mtime = self._caelestia_scheme_mtime()
+        if mtime == self._graphite_scheme_mtime:
+            return
+        self._graphite_scheme_mtime = mtime
+        self.register_theme(build_graphite_theme())
+        if self.theme == GRAPHITE_NAME:
+            # Same theme name, so the reactive does not fire. Re-run the
+            # rebuild that a theme switch would run.
+            self.watch_theme(self.theme)
 
     def watch_theme(self, theme_name: str) -> None:
         """Rebuild ThemeColors when the Textual theme changes."""
@@ -621,6 +657,10 @@ class YTMPlayerApp(
         from ytm_player.config.paths import ensure_dirs
 
         ensure_dirs()
+
+        # Follow wallpaper colour changes for the graphite theme.
+        self._graphite_scheme_mtime = self._caelestia_scheme_mtime()
+        self.set_interval(_CAELESTIA_POLL_INTERVAL, self._poll_caelestia_scheme)
 
         # Check authentication.
         auth = AuthManager(cookies_file=self.settings.yt_dlp.cookies_file)
