@@ -117,6 +117,9 @@ class ExplorePage(Widget):
             widgets.append(ItemGrid(*chips, id="explore-moods", min_column_width=CHIP_WIDTH))
         await scroll.mount(*widgets)
         relayout_soon(self)
+        warm = getattr(self.app, "warm_streams", None)
+        if warm is not None:
+            warm([t.get("videoId", "") for _, items in explore_shelves(feed) for t in items])
 
     def on_click(self, event: events.Click) -> None:
         widget = event.widget

@@ -955,6 +955,9 @@ class SearchPage(Widget):
         if new:
             await shelves.mount(*new)
             relayout_soon(self)
+        warm = getattr(self.app, "warm_streams", None)
+        if warm is not None:
+            warm([t.get("videoId", "") for t in top + results.get("songs", [])])
 
     def _clear_stale_results(self) -> None:
         """Empty all result panels.

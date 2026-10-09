@@ -314,3 +314,12 @@ async def test_passing_over_a_card_does_not_resolve_it(monkeypatch):
         await pilot.hover("#page", offset=(130, 38))
         await pilot.pause(0.5)
         app._speculate.assert_not_called()
+
+
+async def test_home_warms_the_songs_on_its_first_shelves():
+    app = _Host(_feed(cards_per_shelf=4))
+    app.warm_streams = MagicMock()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _ready(pilot)
+        ids = app.warm_streams.call_args.args[0]
+        assert ids[0] == "vid123" and "v2x" in ids

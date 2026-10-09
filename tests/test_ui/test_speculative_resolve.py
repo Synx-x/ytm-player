@@ -28,6 +28,10 @@ class _Host(App):
     on_track_table_track_highlighted = PlaybackMixin.on_track_table_track_highlighted
     _speculate = PlaybackMixin._speculate
 
+    async def _warm(self, video_ids: list[str]) -> None:
+        for video_id in video_ids:
+            await self.stream_resolver.prefetch(video_id)
+
     def __init__(self, playing: dict | None = None) -> None:
         super().__init__()
         self.stream_resolver = _Resolver()

@@ -263,6 +263,10 @@ class HomePage(Widget):
         # The first shelves fill the screen. Paint them before mounting the
         # rest, so a page switch shows Home at once instead of after every card.
         await scroll.mount_all(built[:FIRST_SHELVES])
+        warm = getattr(self.app, "warm_streams", None)
+        if warm is not None:
+            top = self._shelves[:FIRST_SHELVES]
+            warm([c.get("videoId", "") for s in top for c in s["contents"] if c])
         if built[FIRST_SHELVES:]:
             await asyncio.sleep(FIRST_PAINT_GAP)
             await scroll.mount_all(built[FIRST_SHELVES:])

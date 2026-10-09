@@ -37,7 +37,7 @@ Status values: `done`, `partial`, `todo`.
 
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
-| S1 | A song starts in about 1 s | Under 1.5 s when a row or song card was hovered, focused or highlighted for 0.5 s first (prefetch). A cold click resolves in about 2 s (visionos client first, was 2 to 4 s), and about 6 s when googlevideo returns 403 and the retry runs | partial |
+| S1 | A song starts in about 1 s | Pages warm their first four songs on a spare resolver, and a row or card resolves after 0.5 s of hover, focus or highlight. Those start from the cache within 1 to 2 s of the click. A song off both paths still resolves cold in about 2 s | done |
 | S2 | A 400-track playlist opens in about 2 s | About 1.5 s for 383 tracks: the first 200 show, the rest load behind them | done |
 
 ## Responsiveness

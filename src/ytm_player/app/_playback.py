@@ -37,6 +37,8 @@ _YTM_HISTORY_POLL_SECONDS = 1.0
 # Seconds a track row stays highlighted before the player resolves its stream
 # ahead of a play. A resolve takes about 2 s, and the web app is near 1 s.
 SPECULATE_DWELL = 0.5
+# Songs a page warms when it loads. Each takes about 2 s on the spare resolver.
+WARM_LIMIT = 4
 
 
 @dataclass
@@ -718,9 +720,43 @@ class PlaybackMixin(YTMHostBase):
         playing = self.player.current_track if self.player else None
         if not self.stream_resolver or (playing and get_video_id(playing) == video_id):
             return
-        self.run_worker(
-            self.stream_resolver.prefetch(video_id), group="speculate", exclusive=True
-        )
+        self.run_worker(self._warm([video_id]), group="speculate", exclusive=True)
+
+    def warm_streams(self, video_ids: list[str], limit: int = WARM_LIMIT) -> None:
+        """Resolve the first songs a page shows, so a click on them starts at once.
+
+        A newer page's list replaces an older one that has not finished.
+        """
+        wanted = [v for v in dict.fromkeys(video_ids) if v][:limit]
+        if wanted and self.stream_resolver:
+            self.run_worker(self._warm(wanted), group="warm-streams", exclusive=True)
+
+    def _spare_resolver(self) -> Any:
+        """A second resolver for guesses, so a guess never holds the lock a click waits on."""
+        from ytm_player.services.stream import StreamResolver
+
+        main = self.stream_resolver
+        spare = getattr(self, "_spare_stream_resolver", None)
+        if spare is None or spare.quality != main.quality:
+            spare = StreamResolver(main.quality)
+            self._spare_stream_resolver = spare
+        return spare
+
+    async def _warm(self, video_ids: list[str]) -> None:
+        main = self.stream_resolver
+        for video_id in video_ids:
+            if main is None or main._get_cached(video_id) is not None:
+                continue
+            if main._current_pending(video_id, main._cache_generation) is not None:
+                continue
+            generation = main._cache_generation
+            try:
+                info = await self._spare_resolver().resolve(video_id)
+            except Exception:
+                logger.debug("Warm resolve failed for %s", video_id, exc_info=True)
+                continue
+            if info is not None:
+                main._put_cache(info, generation)
 
     def _prefetch_next_track(self) -> None:
         """Prefetch the next track's stream URL in the background.
