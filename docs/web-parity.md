@@ -37,7 +37,7 @@ Status values: `done`, `partial`, `todo`.
 
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
-| S1 | A song starts in about 1 s | Pages and track lists warm their first eight songs on a spare resolver, and any row or card resolves after 0.5 s of hover, focus or highlight. Those start at once from the cache. A song past the eighth that the user never rested on still resolves cold in about 2 s | done |
+| S1 | A song starts in about 1 s | Songs start at once from the cache when warmed: the first twelve of every page and track list, rows that scroll into view, the three rows below the cursor, and any row or card rested on for 0.5 s. Three spare resolvers warm about one song per 0.8 s. A song clicked within about 2 s of first appearing on screen can still resolve cold, in about 2 s | done |
 | S2 | A 400-track playlist opens in about 2 s | About 1.5 s for 383 tracks: the first 200 show, the rest load behind them | done |
 
 ## Responsiveness

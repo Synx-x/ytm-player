@@ -37,9 +37,11 @@ _YTM_HISTORY_POLL_SECONDS = 1.0
 # Seconds a track row stays highlighted before the player resolves its stream
 # ahead of a play. A resolve takes about 2 s, and the web app is near 1 s.
 SPECULATE_DWELL = 0.5
-# Songs a page or track list warms when it loads. Each takes about 2 s on the
-# spare resolver, one at a time, and stays valid for hours.
-WARM_LIMIT = 8
+# Songs a page or track list warms at a time. Each takes about 2 s, and the
+# result stays valid for hours.
+WARM_LIMIT = 12
+# Guesses resolved at once, each on its own spare resolver.
+WARM_WORKERS = 3
 
 
 @dataclass
@@ -723,41 +725,57 @@ class PlaybackMixin(YTMHostBase):
             return
         self.run_worker(self._warm([video_id]), group="speculate", exclusive=True)
 
-    def warm_streams(self, video_ids: list[str], limit: int = WARM_LIMIT) -> None:
+    def warm_streams(
+        self, video_ids: list[str], limit: int = WARM_LIMIT, *, ahead: bool = False
+    ) -> None:
         """Resolve the first songs a page shows, so a click on them starts at once.
 
         A newer page's list replaces an older one that has not finished.
         """
         wanted = [v for v in dict.fromkeys(video_ids) if v][:limit]
         if wanted and self.stream_resolver:
-            self.run_worker(self._warm(wanted), group="warm-streams", exclusive=True)
+            # Rows ahead of the cursor run in a group of their own, so moving the
+            # cursor does not cancel the warming of the page or the rows in view.
+            if ahead:
+                self.run_worker(self._warm(wanted), group="warm-ahead", exclusive=True)
+            else:
+                self.run_worker(self._warm(wanted), group="warm-streams", exclusive=True)
 
-    def _spare_resolver(self) -> Any:
-        """A second resolver for guesses, so a guess never holds the lock a click waits on."""
+    def _spare_resolvers(self) -> list[Any]:
+        """Resolvers for guesses, each with its own yt-dlp lock, so a guess never
+        holds the lock a click waits on, and several guesses run at once."""
         from ytm_player.services.stream import StreamResolver
 
         main = self.stream_resolver
-        spare = getattr(self, "_spare_stream_resolver", None)
-        if spare is None or spare.quality != main.quality:
-            spare = StreamResolver(main.quality)
-            self._spare_stream_resolver = spare
-        return spare
+        spares = getattr(self, "_spare_stream_resolvers", None)
+        if not spares or spares[0].quality != main.quality:
+            spares = [StreamResolver(main.quality) for _ in range(WARM_WORKERS)]
+            self._spare_stream_resolvers = spares
+        return spares
 
     async def _warm(self, video_ids: list[str]) -> None:
         main = self.stream_resolver
-        for video_id in video_ids:
-            if main is None or main._get_cached(video_id) is not None:
-                continue
-            if main._current_pending(video_id, main._cache_generation) is not None:
-                continue
-            generation = main._cache_generation
-            try:
-                info = await self._spare_resolver().resolve(video_id)
-            except Exception:
-                logger.debug("Warm resolve failed for %s", video_id, exc_info=True)
-                continue
-            if info is not None:
-                main._put_cache(info, generation)
+        if main is None:
+            return
+        todo = list(video_ids)
+
+        async def work(spare: Any) -> None:
+            while todo:
+                video_id = todo.pop(0)
+                if main._get_cached(video_id) is not None:
+                    continue
+                if main._current_pending(video_id, main._cache_generation) is not None:
+                    continue
+                generation = main._cache_generation
+                try:
+                    info = await spare.resolve(video_id)
+                except Exception:
+                    logger.debug("Warm resolve failed for %s", video_id, exc_info=True)
+                    continue
+                if info is not None:
+                    main._put_cache(info, generation)
+
+        await asyncio.gather(*(work(spare) for spare in self._spare_resolvers()))
 
     def _prefetch_next_track(self) -> None:
         """Prefetch the next track's stream URL in the background.

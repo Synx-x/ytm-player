@@ -92,7 +92,36 @@ async def test_the_playing_track_is_not_resolved_again():
 async def test_a_loaded_track_list_warms_its_first_songs():
     app = _Host()
     warmed: list[list[str]] = []
-    app.warm_streams = lambda ids: warmed.append(ids)
+    app.warm_streams = lambda ids, ahead=False: warmed.append(ids)
     async with app.run_test(size=(100, 20)) as pilot:
         await pilot.pause()
         assert warmed and warmed[0][:3] == ["vid0", "vid1", "vid2"]
+
+
+async def test_moving_the_cursor_warms_the_rows_below_it():
+    app = _Host()
+    calls: list[tuple[list[str], str]] = []
+    app.warm_streams = lambda ids, ahead=False: calls.append((ids, "warm-ahead" if ahead else "warm-streams"))
+    async with app.run_test(size=(100, 20)) as pilot:
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
+        assert (["vid2", "vid3", "vid4"], "warm-ahead") in calls
+
+
+async def test_rows_scrolled_into_view_are_warmed(monkeypatch):
+    from ytm_player.ui.widgets import track_table
+
+    monkeypatch.setattr(track_table, "WARM_SCROLL_PAUSE", 0.05)
+    many = [{"video_id": f"r{i}", "title": f"S{i}", "artist": "A", "duration": 1} for i in range(60)]
+    app = _Host()
+    calls: list[tuple[list[str], str]] = []
+    app.warm_streams = lambda ids, ahead=False: calls.append((ids, "warm-ahead" if ahead else "warm-streams"))
+    async with app.run_test(size=(100, 20)) as pilot:
+        table = app.query_one(TrackTable)
+        table.load_tracks(many)
+        await pilot.pause()
+        table.scroll_to(y=40, animate=False)
+        await pilot.pause(0.3)
+        visible = [ids for ids, group in calls if group == "warm-streams" and "r40" in ids]
+        assert visible

@@ -22,7 +22,7 @@ def _info(video_id: str) -> StreamInfo:
 
 class _Host:
     _warm = PlaybackMixin._warm
-    _spare_resolver = PlaybackMixin._spare_resolver
+    _spare_resolvers = PlaybackMixin._spare_resolvers
 
     def __init__(self) -> None:
         self.stream_resolver = StreamResolver("high")
@@ -39,9 +39,10 @@ async def test_warmed_songs_land_in_the_main_cache_and_cached_ones_are_skipped(m
 
     monkeypatch.setattr(StreamResolver, "_resolve_sync", fake_resolve_sync)
     await host._warm(["cached", "a", "b"])
-    assert asked == ["a", "b"]
+    assert sorted(asked) == ["a", "b"]
     assert host.stream_resolver._get_cached("a") is not None
-    assert host._spare_stream_resolver is not host.stream_resolver
+    assert host.stream_resolver not in host._spare_stream_resolvers
+    assert len(host._spare_stream_resolvers) == 3
 
 
 async def test_a_click_does_not_wait_for_a_guess_in_flight(monkeypatch):
@@ -70,3 +71,12 @@ def test_warm_streams_dedupes_and_caps(monkeypatch):
     host.run_worker = lambda ids, **kwargs: started.append(ids)
     PlaybackMixin.warm_streams(host, ["a", "a", "", "b", "c", "d", "e"])
     assert started == [["a", "b", "c", "d", "e"]]
+
+
+def test_warm_streams_caps_at_the_limit():
+    started: list[list[str]] = []
+    host = SimpleNamespace(stream_resolver=object())
+    host._warm = lambda ids: ids
+    host.run_worker = lambda ids, **kwargs: started.append(ids)
+    PlaybackMixin.warm_streams(host, [f"v{i}" for i in range(30)])
+    assert len(started[0]) == 12

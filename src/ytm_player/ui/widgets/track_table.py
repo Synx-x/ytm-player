@@ -34,6 +34,12 @@ _SORT_KEYS: dict[str, Callable[[dict], Any]] = {
 }
 
 
+# Seconds a scroll must pause before the rows in view are warmed.
+WARM_SCROLL_PAUSE = 0.3
+# Rows below the cursor warmed as it moves.
+WARM_AHEAD = 3
+
+
 class TrackTable(DataTable):
     """A DataTable subclass for displaying lists of tracks.
 
@@ -287,6 +293,8 @@ class TrackTable(DataTable):
     # -- Setup ------------------------------------------------------------
 
     def on_mount(self) -> None:
+        self._warm_timer: Any = None
+        self.watch(self, "scroll_y", self._scrolled, init=False)
         # Pick up the currently-playing video_id from the app's player so
         # the playing-row highlight survives navigating away and back.
         try:
@@ -982,6 +990,25 @@ class TrackTable(DataTable):
             original_idx = self._filtered_map[row_idx] if self._filtered_map else row_idx
             self.post_message(self.TrackSelected(self._tracks[row_idx], original_idx))
 
+    def _scrolled(self, _old: float, _new: float) -> None:
+        # Warm the rows that scrolled into view once scrolling pauses.
+        if self._warm_timer is not None:
+            self._warm_timer.stop()
+        self._warm_timer = self.set_timer(WARM_SCROLL_PAUSE, self._warm_visible)
+
+    def _warm_visible(self) -> None:
+        self._warm_timer = None
+        first = max(0, int(self.scroll_y))
+        self._warm_rows(first, first + self.size.height)
+
+    def _warm_rows(self, start: int, stop: int, *, ahead: bool = False) -> None:
+        """Resolve the songs of rows start..stop ahead of a click, on the app's spare resolvers."""
+        warm = getattr(self.app, "warm_streams", None)
+        if warm is None:
+            return
+        rows = self._tracks[max(0, start):stop]
+        warm([t.get("video_id") or t.get("videoId") or "" for t in rows], ahead=ahead)
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         """Forward row highlight as a TrackHighlighted message and update SelectionInfoBar.
 
@@ -989,6 +1016,8 @@ class TrackTable(DataTable):
         otherwise a freshly-mounted table fires RowHighlighted at row 0
         on init and stomps the sidebar's selection in the info bar.
         """
+        # Moving the cursor warms the rows just below it, where it is heading.
+        self._warm_rows(event.cursor_row + 1, event.cursor_row + 1 + WARM_AHEAD, ahead=True)
         row_idx = event.cursor_row
         track = self._tracks[row_idx] if 0 <= row_idx < len(self._tracks) else None
         self.post_message(self.TrackHighlighted(track, row_idx))
