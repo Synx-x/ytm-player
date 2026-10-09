@@ -54,3 +54,32 @@ async def test_no_real_images_keeps_the_half_block_art(monkeypatch):
         assert isinstance(art, AlbumArt)
         app.query_one(PlaybackBar).update_track(TRACK)
         assert art.thumbnail_url == "https://img/1"
+
+
+@pytest.mark.parametrize(
+    ("button", "method"),
+    [("#pb-prev", "_play_previous"), ("#pb-play", "_toggle_play_pause"), ("#pb-next", "_play_next")],
+)
+async def test_the_bar_has_the_web_transport_buttons(button: str, method: str):
+    from unittest.mock import AsyncMock
+
+    app = _Host()
+    for name in ("_play_previous", "_toggle_play_pause", "_play_next"):
+        setattr(app, name, AsyncMock())
+    async with app.run_test(size=(120, 8)) as pilot:
+        assert app.query_one(button).outer_size.height == 3
+        await pilot.click(button)
+        await pilot.pause()
+        getattr(app, method).assert_awaited_once()
+
+
+async def test_the_play_button_shows_pause_while_a_track_plays():
+    app = _Host()
+    async with app.run_test(size=(120, 8)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        bar.update_playback_state(is_playing=True, is_paused=False)
+        await pilot.pause()
+        assert str(app.query_one("#pb-play").render()) == "⏸"
+        bar.update_playback_state(is_playing=True, is_paused=True)
+        await pilot.pause()
+        assert str(app.query_one("#pb-play").render()) == "▶"

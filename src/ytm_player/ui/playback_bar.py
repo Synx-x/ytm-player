@@ -12,6 +12,7 @@ from textual.events import Click, MouseScrollDown, MouseScrollUp
 from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
+from textual.widgets import Static
 
 from ytm_player.services.queue import RepeatMode
 from ytm_player.ui.theme import get_theme
@@ -284,6 +285,43 @@ class _HeartButton(Widget):
 # ── Main playback bar ─────────────────────────────────────────────
 
 
+class _TransportButton(Static):
+    """Previous, play/pause or next, at the left end of the bar as on the web."""
+
+    DEFAULT_CSS = """
+    _TransportButton {
+        width: 5;
+        height: 3;
+        content-align: center middle;
+    }
+    _TransportButton:hover {
+        background: $boost;
+    }
+    _TransportButton.-play {
+        background: $foreground;
+        color: $background;
+        text-style: bold;
+    }
+    _TransportButton.-play:hover {
+        background: $primary;
+    }
+    """
+
+    def __init__(self, label: str, action: str, **kwargs: Any) -> None:
+        super().__init__(label, **kwargs)
+        self._action = action
+
+    async def on_click(self, event: Click) -> None:
+        event.stop()
+        app = cast("YTMHostBase", self.app)
+        if self._action == "play_pause":
+            await app._toggle_play_pause()
+        elif self._action == "prev":
+            await app._play_previous()
+        elif self._action == "next":
+            await app._play_next()
+
+
 class PlaybackBar(Widget):
     """Persistent playback bar showing track info, progress, and controls.
 
@@ -309,6 +347,11 @@ class PlaybackBar(Widget):
     PlaybackBar #pb-outer {
         height: 100%;
         width: 1fr;
+    }
+    PlaybackBar #pb-transport {
+        width: 16;
+        height: 3;
+        margin: 0 1 0 0;
     }
     PlaybackBar #pb-art {
         width: 10;
@@ -343,6 +386,10 @@ class PlaybackBar(Widget):
 
         settings = get_settings()
         with Horizontal(id="pb-outer"):
+            with Horizontal(id="pb-transport"):
+                yield _TransportButton("⏮", "prev", id="pb-prev")
+                yield _TransportButton("▶", "play_pause", id="pb-play", classes="-play")
+                yield _TransportButton("⏭", "next", id="pb-next")
             art: Widget = Cover(id="pb-art") if has_real_images() else AlbumArt(id="pb-art")
             if not settings.ui.album_art:
                 art.display = False
@@ -396,6 +443,9 @@ class PlaybackBar(Widget):
         info = self.query_one("#pb-track-info", _TrackInfo)
         info.is_playing = is_playing
         info.is_paused = is_paused
+        self.query_one("#pb-play", _TransportButton).update(
+            "⏸" if is_playing and not is_paused else "▶"
+        )
 
     def update_position(self, position: float, duration: float | None = None) -> None:
         """Update the progress bar position."""
