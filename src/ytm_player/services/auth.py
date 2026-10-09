@@ -14,6 +14,7 @@ from __future__ import annotations
 import errno
 import hashlib
 import io
+import itertools
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ import sys
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from http.cookiejar import Cookie, MozillaCookieJar
 from pathlib import Path
@@ -930,17 +931,24 @@ class AuthManager:
         detected = self._detect_browser()
         if detected is None:
             return False
-        browser, cookies, jar = detected
-        try:
-            return self._save_youtube_cookies(
-                cookies,
-                stream_jar=jar,
-                expected_channel_id=expected_channel_id,
-                recorded=recorded,
-                owner=owner,
-            )
-        except Exception:
-            logger.debug("Auto-refresh failed", exc_info=True)
+        # The first browser with sign-in cookies is not always the one the
+        # account lives in: a stale Firefox profile sorts before Zen. So a
+        # refusal moves on to every other browser that has sign-in cookies.
+        candidates = itertools.chain(
+            [detected], self._browser_candidates(skip=frozenset({detected[0]}))
+        )
+        for browser, cookies, jar in candidates:
+            try:
+                if self._save_youtube_cookies(
+                    cookies,
+                    stream_jar=jar,
+                    expected_channel_id=expected_channel_id,
+                    recorded=recorded,
+                    owner=owner,
+                ):
+                    return True
+            except Exception:
+                logger.debug("Auto-refresh from %s failed", browser, exc_info=True)
         return False
 
     # ── Setup entry point ────────────────────────────────────────────
@@ -996,24 +1004,31 @@ class AuthManager:
     # ── Browser cookie extraction ────────────────────────────────────
 
     @staticmethod
-    def _detect_browser() -> tuple[str, list, list] | None:
-        """Find a browser that has YouTube cookies.
+    def _browser_candidates(
+        skip: frozenset[str] = frozenset(),
+    ) -> Iterator[tuple[str, list, list]]:
+        """Yield every browser, in preference order, that has YouTube sign-in cookies.
 
-        Returns ``(browser, youtube_cookies, full_jar)`` — the full jar feeds
-        the stream cookiejar (youtube.com + google.com) via _commit_session.
+        Each item is ``(browser, youtube_cookies, full_jar)``. The full jar
+        feeds the stream cookiejar (youtube.com + google.com) via _commit_session.
         """
         _patch_yt_dlp_browsers()
 
         for browser in _BROWSERS:
+            if browser in skip:
+                continue
             try:
                 jar = _extract_browser_jar(browser)
                 yt_cookies = [c for c in jar if c.domain == ".youtube.com"]
                 if any(c.name in ("SAPISID", "__Secure-3PAPISID") for c in yt_cookies):
-                    return browser, yt_cookies, list(jar)
+                    yield browser, yt_cookies, list(jar)
             except Exception:
                 logger.debug("Browser %s not available", browser, exc_info=True)
-                continue
-        return None
+
+    @staticmethod
+    def _detect_browser() -> tuple[str, list, list] | None:
+        """The first browser that has YouTube sign-in cookies, or None."""
+        return next(AuthManager._browser_candidates(), None)
 
     def _refresh_from_cookies_file(
         self,
