@@ -37,7 +37,7 @@ Status values: `done`, `partial`, `todo`.
 
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
-| S1 | A song starts in about 1 s | Songs start at once from the cache when warmed: the first twelve of every page and track list, rows that scroll into view, the three rows below the cursor, and any row or card rested on for 0.5 s. Three spare resolvers warm about one song per 0.8 s. A song clicked within about 2 s of first appearing on screen can still resolve cold, in about 2 s | done |
+| S1 | A song starts in about 1 s | Any song starts within about 1 s: a cold lookup is one direct innertube request (0.55 to 0.63 s), with yt-dlp as the fallback. Warmed songs (first twelve of a list, rows in view, rows ahead of the cursor, rows rested on) start at once | done |
 | S2 | A 400-track playlist opens in about 2 s | About 1.5 s for 383 tracks: the first 200 show, the rest load behind them | done |
 
 ## Responsiveness

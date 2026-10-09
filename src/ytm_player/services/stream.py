@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 # Cache resolved URLs for 5 hours (YouTube URLs typically expire after ~6 hours).
 _CACHE_TTL_SECONDS = 5 * 60 * 60
+# After clear_cache(), resolves skip the fast direct lookup for this long.
+_DIRECT_PAUSE_SECONDS = 60
 
 # Maximum number of entries to keep in cache.  When exceeded, the oldest
 # entries are evicted regardless of TTL.
@@ -198,6 +200,7 @@ class StreamResolver:
         # on separate threads against the shared instance, so extract_info()
         # calls are serialized. Only the network call is held under it.
         self._extract_lock = threading.Lock()
+        self._direct_paused_until = 0.0
         # Bumped by clear_cache(). A resolve that started before the clear
         # must not put its (pre-clear) result back into the emptied cache.
         self._cache_generation = 0
@@ -365,6 +368,9 @@ class StreamResolver:
             logger.warning("Invalid video_id rejected: %r", video_id)
             return None
         url = f"https://music.youtube.com/watch?v={video_id}"
+        fast = self._try_direct(video_id)
+        if fast is not None:
+            return fast
         delays = [0, 1.0, 2.0]  # initial attempt + 2 retries
 
         for attempt, delay in enumerate(delays):
@@ -374,6 +380,34 @@ class StreamResolver:
             if info is not None:
                 return info
         return None
+
+    def _try_direct(self, video_id: str) -> StreamInfo | None:
+        """The fast path: one innertube request, about 0.6 s against 2 s for yt-dlp.
+
+        Used only with the default client setup, and not for a minute after
+        clear_cache(): a stream that failed to open is retried through yt-dlp.
+        """
+        if time.monotonic() < self._direct_paused_until:
+            return None
+        opts = self._build_ydl_opts()
+        clients = opts.get("extractor_args", {}).get("youtube", {}).get("player_client")
+        if tuple(clients or ()) != _FULL_CLIENTS or opts.get("cookiefile"):
+            return None
+        from ytm_player.services.direct_stream import lookup
+
+        found = lookup(video_id, self._quality)
+        if found is None:
+            return None
+        logger.debug("Direct lookup for %s", video_id)
+        return StreamInfo(
+            url=found["url"],
+            video_id=video_id,
+            format=found["codec"],
+            bitrate=found["bitrate"],
+            duration=found["duration"],
+            expires_at=time.time() + _CACHE_TTL_SECONDS,
+            thumbnail_url=None,
+        )
 
     def _try_resolve(self, url: str, video_id: str, attempt: int) -> StreamInfo | None:
         """Single resolution attempt."""
@@ -610,6 +644,7 @@ class StreamResolver:
         with self._cache_lock:
             self._cache.clear()
             self._cache_generation += 1
+        self._direct_paused_until = time.monotonic() + _DIRECT_PAUSE_SECONDS
         self._reset_ydl()
 
     def prune_expired(self) -> int:

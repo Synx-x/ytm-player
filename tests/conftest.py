@@ -107,3 +107,11 @@ def queue_manager():
     from ytm_player.services.queue import QueueManager
 
     return QueueManager()
+
+
+@pytest.fixture(autouse=True)
+def _no_direct_stream_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tests never reach YouTube: the fast direct lookup finds nothing unless a test says otherwise."""
+    from ytm_player.services import direct_stream
+
+    monkeypatch.setattr(direct_stream, "lookup", lambda video_id, quality: None)

@@ -121,6 +121,7 @@ async def test_grid_fills_the_width_whatever_the_playlist_count(width: int, colu
     app = _Host(grid=True, playlists=nine)
     async with app.run_test(size=(width, 40)) as pilot:
         cards = await _cards(pilot)
+        await pilot.pause(0.3)  # under load, the grid lays out after the cards exist
         assert len({c.region.x for c in cards}) == columns
 
 
