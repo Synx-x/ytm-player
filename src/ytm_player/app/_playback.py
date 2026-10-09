@@ -37,8 +37,9 @@ _YTM_HISTORY_POLL_SECONDS = 1.0
 # Seconds a track row stays highlighted before the player resolves its stream
 # ahead of a play. A resolve takes about 2 s, and the web app is near 1 s.
 SPECULATE_DWELL = 0.5
-# Songs a page warms when it loads. Each takes about 2 s on the spare resolver.
-WARM_LIMIT = 4
+# Songs a page or track list warms when it loads. Each takes about 2 s on the
+# spare resolver, one at a time, and stays valid for hours.
+WARM_LIMIT = 8
 
 
 @dataclass

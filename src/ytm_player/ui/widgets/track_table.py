@@ -331,6 +331,10 @@ class TrackTable(DataTable):
         """
         if keys is not None and len(keys) != len(tracks):
             raise ValueError("keys must have one entry per track")
+        # Resolve the first songs ahead of a click, as Home and Search do.
+        warm = getattr(self.app, "warm_streams", None) if self.is_attached else None
+        if warm is not None:
+            warm([t.get("video_id") or t.get("videoId") or "" for t in tracks])
         self._occurrence_keys = list(keys) if keys is not None else None
         self._reset_selection()
         self.clear()

@@ -69,4 +69,4 @@ def test_warm_streams_dedupes_and_caps(monkeypatch):
     host._warm = lambda ids: ids
     host.run_worker = lambda ids, **kwargs: started.append(ids)
     PlaybackMixin.warm_streams(host, ["a", "a", "", "b", "c", "d", "e"])
-    assert started == [["a", "b", "c", "d"]]
+    assert started == [["a", "b", "c", "d", "e"]]
