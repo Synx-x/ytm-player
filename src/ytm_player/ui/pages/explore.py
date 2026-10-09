@@ -70,7 +70,7 @@ class ExplorePage(Widget):
     ExplorePage .explore-title {{ text-style: bold; margin-bottom: 1; }}
     ExplorePage #explore-moods {{ height: auto; grid-gutter: 1 2; }}
     ExplorePage .mood-chip {{ width: {CHIP_WIDTH}; height: 3; padding: 1 1; background: $boost;
-        border-left: tall $primary; text-wrap: nowrap; text-overflow: ellipsis; }}
+        border-left: solid $primary; text-wrap: nowrap; text-overflow: ellipsis; }}
     ExplorePage .mood-chip:hover {{ background: $primary 30%; }}
     """
 

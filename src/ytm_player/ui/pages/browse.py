@@ -299,8 +299,8 @@ class BrowseTabBar(Widget):
            already-reserved rows — they never add/remove a row, so the text
            stays vertically centred whether the tab is plain, active, or
            focused. (A `tall transparent` border occupies its row invisibly.) */
-        border-top: tall transparent;
-        border-bottom: tall transparent;
+        border-top: solid transparent;
+        border-bottom: solid transparent;
     }
 
     BrowseTabBar .tab-item:hover {
@@ -310,7 +310,7 @@ class BrowseTabBar(Widget):
     BrowseTabBar .tab-item.active {
         text-style: bold;
         color: $text;
-        border-bottom: tall $primary;
+        border-bottom: solid $primary;
     }
 
     /* Focused tab label — where Tab is currently sitting. Distinct from
@@ -320,8 +320,8 @@ class BrowseTabBar(Widget):
     BrowseTabBar .tab-item:focus {
         color: $text;
         background: $primary 30%;
-        border-top: tall $primary;
-        border-bottom: tall $accent;
+        border-top: solid $primary;
+        border-bottom: solid $accent;
     }
     """
 

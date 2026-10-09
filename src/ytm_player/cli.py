@@ -207,6 +207,9 @@ def main(ctx: click.Context, compact_json: bool, debug: bool) -> None:
         from ytm_player.ui.widgets.cover import prime_image_support
 
         prime_image_support()  # textual-image must query the terminal before Textual starts
+        from ytm_player.ui.widgets.thin_scrollbar import install as thin_scrollbars
+
+        thin_scrollbars()
         app = YTMPlayerApp()
         app.run()
 

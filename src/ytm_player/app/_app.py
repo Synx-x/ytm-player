@@ -135,6 +135,18 @@ class YTMPlayerApp(
         color: $foreground;
     }
 
+    /* Thin scroll bars everywhere: one cell wide (about 9 px in kitty), grey
+       on black. Horizontal bars are drawn thin by ThinScrollBarRender. */
+    * {
+        scrollbar-size-vertical: 1;
+        scrollbar-background: $background;
+        scrollbar-background-hover: $background;
+        scrollbar-background-active: $background;
+        scrollbar-color: #2e2e2e;
+        scrollbar-color-hover: #4a4a4a;
+        scrollbar-color-active: $primary;
+    }
+
     ToastRack {
         dock: top;
         align-horizontal: right;
@@ -154,15 +166,15 @@ class YTMPlayerApp(
     }
 
     Toast.-information {
-        border-left: thick $primary;
+        border-left: solid $primary;
     }
 
     Toast.-warning {
-        border-left: thick $warning;
+        border-left: solid $warning;
     }
 
     Toast.-error {
-        border-left: thick $error;
+        border-left: solid $error;
     }
 
     #app-body {
@@ -368,7 +380,7 @@ class YTMPlayerApp(
             "active-tab": variables.get("text", "#ffffff"),
             "inactive-tab": variables.get("text-muted", "#999999"),
             "selected-item": variables.get("surface", "#2a2a2a"),
-            "progress-filled": variables.get("primary", "#ff0000"),
+            "progress-filled": variables.get("primary", "#6aa81e"),
             "progress-empty": variables.get("surface", "#555555"),
             "lyrics-played": variables.get("text-muted", "#999999"),
             "lyrics-current": variables.get(
@@ -425,7 +437,7 @@ class YTMPlayerApp(
                 background=t.background or "#0f0f0f",
                 foreground=t.foreground or "#ffffff",
                 secondary=t.secondary or "#aaaaaa",
-                accent=t.accent or "#ff4e45",
+                accent=t.accent or "#86b34a",
                 success=t.success or "#2ecc71",
                 warning=t.warning or "#f39c12",
                 error=t.error or "#e74c3c",
@@ -459,7 +471,7 @@ class YTMPlayerApp(
             # variables dict afterward (see get_css_variables()). Without
             # this, cursor/selection highlights stay pinned to whatever
             # `t.primary` was when the theme was first registered (YTM_DARK's
-            # hardcoded "#ff0000" for the default theme), no matter what
+            # hardcoded "#6aa81e" for the default theme), no matter what
             # theme.toml says. Re-register the active theme with the
             # resolved colors so Textual derives those tokens correctly too,
             # then force a CSS refresh -- re-registering under the same name
@@ -738,6 +750,7 @@ class YTMPlayerApp(
 
         # Restore session state (volume, shuffle, repeat) from last session.
         await self._restore_session_state()
+        self._start_session_autosave()
 
         # Start MPRIS if enabled (Linux only — dbus-fast is Linux-only, and
         # macOS/Windows have their own media integrations below).

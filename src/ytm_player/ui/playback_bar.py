@@ -340,34 +340,39 @@ class PlaybackBar(Widget):
     DEFAULT_CSS = """
     PlaybackBar {
         dock: bottom;
-        height: 4;
+        height: 7;
         background: $playback-bar-bg;
         border-top: solid $border;
     }
+    /* Three groups with even gaps, all centred on the bar's middle row:
+       transport buttons, cover, then title and progress. */
     PlaybackBar #pb-outer {
-        height: 100%;
+        height: 1fr;
         width: 1fr;
+        padding: 0 3;
+        align-vertical: middle;
     }
     PlaybackBar #pb-transport {
-        width: 16;
+        width: 15;
         height: 3;
-        margin: 0 1 0 0;
+        margin: 0 3 0 0;
     }
     PlaybackBar #pb-art {
         width: 10;
-        height: 3;
-        margin: 0 1 0 0;
+        height: 4;
+        margin: 0 3 0 0;
     }
     PlaybackBar Cover#pb-art {
-        width: 7;
+        width: 8;
     }
     PlaybackBar #pb-content {
         width: 1fr;
-        height: auto;
+        height: 3;
     }
     PlaybackBar #pb-top-row {
         height: 1;
         width: 1fr;
+        margin-bottom: 1;
     }
     PlaybackBar #pb-bottom-row {
         height: 1;
