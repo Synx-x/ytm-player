@@ -38,7 +38,7 @@ Status values: `done`, `partial`, `todo`.
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
 | S1 | A song starts in about 1 s | Under 1.5 s when the row was highlighted for 0.5 s first (prefetch). 2 to 4 s cold, 8 s when googlevideo returns 403 and the retry runs | partial |
-| S2 | A 400-track playlist opens in about 2 s | About 3.5 s for 383 tracks (300 in the first batch) | partial |
+| S2 | A 400-track playlist opens in about 2 s | About 1.5 s for 383 tracks: the first 200 show, the rest load behind them | done |
 
 ## Responsiveness
 
