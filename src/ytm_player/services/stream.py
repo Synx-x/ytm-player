@@ -126,6 +126,23 @@ class _YtDlpLogger:
 # the video track of a combined format is never rendered.
 _COMBINED_FALLBACK = "best[vcodec!=none][acodec!=none]"
 
+# yt-dlp asks each player client in turn. The first attempt asks only the
+# visionos client, which serves the audio formats and resolves in about 1.7 s
+# against 2.4 s for the full set. A retry asks the full set: the android client
+# has a fallback format for madeForKids content the others refuse.
+_FAST_CLIENTS = ("visionos",)
+_FULL_CLIENTS = ("default", "android")
+
+
+def _choose_clients(params: dict, attempt: int) -> None:
+    """Use the fast client set on a first attempt, unless the user configured their own."""
+    youtube = params.get("extractor_args", {}).get("youtube", {})
+    clients = tuple(youtube.get("player_client") or ())
+    if clients not in (_FAST_CLIENTS, _FULL_CLIENTS):
+        return
+    youtube["player_client"] = list(_FAST_CLIENTS if attempt == 0 else _FULL_CLIENTS)
+
+
 QUALITY_FORMATS = {
     "high": f"bestaudio/{_COMBINED_FALLBACK}",
     "medium": f"bestaudio[abr<=128]/bestaudio/{_COMBINED_FALLBACK}",
@@ -214,7 +231,7 @@ class StreamResolver:
             "writethumbnail": False,
             # Android client provides a non-PoT fallback path (legacy format 18)
             # that unblocks madeForKids content which the default web client refuses.
-            "extractor_args": {"youtube": {"player_client": ["default", "android"]}},
+            "extractor_args": {"youtube": {"player_client": list(_FULL_CLIENTS)}},
         }
         return apply_configured_yt_dlp_options(opts, settings)
 
@@ -366,6 +383,7 @@ class StreamResolver:
             ydl = self._get_ydl()  # increments _active_resolves; see _get_ydl's docstring
             try:
                 with self._extract_lock:
+                    _choose_clients(ydl.params, attempt)
                     info = ydl.extract_info(url, download=False)
             finally:
                 with self._ydl_lock:
