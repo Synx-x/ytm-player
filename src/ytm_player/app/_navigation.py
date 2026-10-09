@@ -26,6 +26,8 @@ PAGE_NAMES = (
     "search",
     "context",
     "browse",
+    "explore",
+    "mood",
     "queue",
     "help",
     "liked_songs",
@@ -256,6 +258,7 @@ class NavigationMixin(YTMHostBase):
         """Instantiate the widget for a given page name."""
         from ytm_player.ui.pages.browse import BrowsePage
         from ytm_player.ui.pages.context import ContextPage
+        from ytm_player.ui.pages.explore import ExplorePage, MoodPage
         from ytm_player.ui.pages.help import HelpPage
         from ytm_player.ui.pages.home import HomePage
         from ytm_player.ui.pages.library import LibraryPage
@@ -270,6 +273,8 @@ class NavigationMixin(YTMHostBase):
             "search": SearchPage,
             "context": ContextPage,
             "browse": BrowsePage,
+            "explore": ExplorePage,
+            "mood": MoodPage,
             "queue": QueuePage,
             "help": HelpPage,
             "liked_songs": LikedSongsPage,

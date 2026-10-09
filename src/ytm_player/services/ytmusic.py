@@ -168,6 +168,34 @@ def mutation_failure_suffix(kind: MutationResult) -> str:
     return _MUTATION_TOAST_SUFFIX.get(kind, "")
 
 
+def _two_row_cards(node: Any) -> list[dict[str, Any]]:
+    """Every playlist card (``musicTwoRowItemRenderer``) in a raw browse response, in page order."""
+    cards: list[dict[str, Any]] = []
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, list):
+            stack.extend(reversed(current))
+        elif isinstance(current, dict):
+            item = current.get("musicTwoRowItemRenderer")
+            if isinstance(item, dict):
+                endpoint = item.get("navigationEndpoint", {}).get("browseEndpoint", {})
+                thumbnail = item.get("thumbnailRenderer", {}).get("musicThumbnailRenderer", {})
+                cards.append(
+                    {
+                        "resultType": "playlist",
+                        "title": "".join(r.get("text", "") for r in item.get("title", {}).get("runs", [])),
+                        "description": "".join(
+                            r.get("text", "") for r in item.get("subtitle", {}).get("runs", [])
+                        ),
+                        "browseId": endpoint.get("browseId", ""),
+                        "thumbnails": thumbnail.get("thumbnail", {}).get("thumbnails", []),
+                    }
+                )
+            stack.extend(reversed(list(current.values())))
+    return cards
+
+
 class YTMusicService:
     """Async wrapper around ytmusicapi.YTMusic.
 
@@ -488,6 +516,38 @@ class YTMusicService:
         except Exception:
             logger.exception("get_charts failed for country=%r", country)
             return None
+
+    async def get_explore(self) -> dict[str, Any] | None:
+        """Return the Explore feed: new releases, top songs, moods, trending, new videos.
+
+        Returns ``None`` on failure, so callers can tell a failed fetch from an empty feed.
+        """
+        try:
+            result = await self._call(self.client.get_explore)
+        except Exception:
+            logger.exception("get_explore failed")
+            return None
+        return result if isinstance(result, dict) else None
+
+    async def get_mood_playlists(self, params: str, limit: int = 60) -> list[dict[str, Any]] | None:
+        """Return the playlists of one mood or genre chip from the Explore feed.
+
+        ytmusicapi's own ``get_mood_playlists`` raises on a playlist whose
+        author is plain text, not a link, and loses the whole page. This
+        reads every playlist card of the raw page instead.
+        """
+        body = {"browseId": "FEmusic_moods_and_genres_category", "params": params}
+        try:
+            raw = await self._call(self.client._send_request, "browse", body)
+        except Exception:
+            logger.exception("get_mood_playlists failed")
+            return None
+        playlists: dict[str, dict[str, Any]] = {}
+        for card in _two_row_cards(raw):
+            browse_id = card.get("browseId") or ""
+            if browse_id and browse_id not in playlists:
+                playlists[browse_id] = card
+        return list(playlists.values())[:limit]
 
     async def get_new_releases(self) -> list[dict[str, Any]] | None:
         """Return new album releases.

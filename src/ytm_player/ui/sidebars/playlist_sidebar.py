@@ -438,8 +438,8 @@ class LibraryPanel(Widget):
 
 
 # Pinned items that open a page directly, and the page each one opens.
-# Explore is the Browse page.
-_NAV_PAGES = {"ps-nav-home": "home", "ps-nav-explore": "browse", "ps-nav-library": "library"}
+# Mood pages and the Browse tabs belong to Explore, so Explore stays highlighted there.
+_NAV_PAGES = {"ps-nav-home": "home", "ps-nav-explore": "explore", "ps-nav-library": "library"}
 _PINNED_PAGE = {**_NAV_PAGES, "ps-nav-liked": "liked_songs", "ps-nav-recent": "recently_played"}
 
 class PlaylistSidebar(Widget):
@@ -612,6 +612,7 @@ class PlaylistSidebar(Widget):
 
     def set_active_page(self, page_name: str) -> None:
         """Highlight the pinned item for the page now showing, as the web menu does."""
+        page_name = "explore" if page_name in ("mood", "browse") else page_name
         for item in self.query(".ps-pinned-item"):
             item.set_class(_PINNED_PAGE.get(item.id or "") == page_name, "active")
 

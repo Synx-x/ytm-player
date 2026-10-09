@@ -15,7 +15,7 @@ Status values: `done`, `partial`, `todo`.
 | L3 | Top bar: search box | Header search box opens Search with the cursor in it | done |
 | L4 | Main area: Home shelves of cover cards | Home page | done |
 | L5 | Bottom player bar: cover, title, artist, controls, progress, volume | Playback bar with real cover | partial |
-| L6 | Real cover art everywhere | Home, Search, Library grid, album and playlist pages, player bar. Not yet Explore | partial |
+| L6 | Real cover art everywhere | Home, Explore, mood pages, Search, Library grid, album and playlist pages, player bar | done |
 
 ## Behaviour
 
@@ -29,7 +29,7 @@ Status values: `done`, `partial`, `todo`.
 | B6 | Player bar: play/pause, next, previous, seek by click | Playback bar | partial |
 | B7 | Up next queue | Queue page | partial |
 | B8 | Like a song | `+` key and track actions | partial |
-| B9 | Explore: new releases, charts, moods | Browse page | partial |
+| B9 | Explore: new releases, charts, moods | Explore page: New releases and Charts buttons, shelves of new albums, trending and new videos, mood and genre chips that open a grid of playlists | done |
 | B10 | Library page: grid of your playlists | Cover grid, cached for 10 minutes | done |
 | B11 | Back to Home is instant | Home feed cached for 10 minutes | done |
 

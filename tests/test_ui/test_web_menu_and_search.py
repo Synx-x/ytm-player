@@ -27,7 +27,7 @@ class _SidebarHost(App):
 
 @pytest.mark.parametrize(
     ("item_id", "page"),
-    [("ps-nav-home", "home"), ("ps-nav-explore", "browse"), ("ps-nav-library", "library"),
+    [("ps-nav-home", "home"), ("ps-nav-explore", "explore"), ("ps-nav-library", "library"),
      ("ps-nav-liked", "liked_songs"), ("ps-nav-recent", "recently_played")],  # fmt: skip
 )
 async def test_each_menu_item_opens_its_page(item_id: str, page: str) -> None:
