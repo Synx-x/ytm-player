@@ -115,7 +115,7 @@ predictive = true            # show search suggestions as you type
 
 ```toml
 [ui]
-theme = "ytm-dark"           # startup default Textual theme; runtime changes are saved in session.json
+theme = "ytm-dark"           # startup default Textual theme ("graphite" follows the wallpaper). ytm-player saves runtime changes in session.json
 album_art = true             # show colored half-block album art in playback bar
 progress_style = "block"     # block or line
 sidebar_width = 30
@@ -213,6 +213,14 @@ inactive_tab = "#999999"
 ```
 
 > The `lyrics_current` color falls back to the active theme's accent (and then to `#ff4e45` red as the absolute last-resort default). Override only if you want something different from your theme's accent.
+
+### The `graphite` theme
+
+Set `theme = "graphite"` under `[ui]` to use it. Graphite separates the top bar, sidebar, content and playback bar by background tone instead of border lines. Borders become a faint hairline.
+
+Its primary colour follows your desktop wallpaper. Graphite reads `colours.primary` from the [Caelestia shell](https://github.com/caelestia-dots/shell) scheme at `$XDG_STATE_HOME/caelestia/scheme.json` (default `~/.local/state/caelestia/scheme.json`). When that file is missing or holds no valid colour, the primary is YouTube red, `#ff0000`.
+
+The selection tint, the accent and the current lyric line all derive from that primary. The app checks the scheme file every 2 seconds and re-themes in place when the wallpaper changes. `theme.toml` overrides still win over the wallpaper colour.
 
 ## `keymap.toml`
 
