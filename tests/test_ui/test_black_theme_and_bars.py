@@ -21,9 +21,17 @@ def test_horizontal_bars_draw_a_thin_line_and_vertical_bars_stay_one_cell():
     segments = ThinScrollBarRender.render_bar(
         size=20, virtual_size=60, window_size=20, position=0, vertical=False,
         back_color=Color.parse("#000000"), bar_color=Color.parse("#2e2e2e")).segments  # fmt: skip
-    assert len(segments) == 20
-    assert {s.text for s in segments} == {"▃", " "}
-    assert sum(s.text == "▃" for s in segments) == 7
+    cells = [s.text for s in segments if s.text != "\n"]
+    assert len(cells) == 20
+    assert set(cells) == {"▃", "▂", " "}
+    assert cells[:7] == ["▂", "▃", "▃", "▃", "▃", "▃", "▂"], "a thin line with tapered ends"
+
+
+def test_vertical_bars_are_one_cell_with_rounded_ends():
+    segments = ThinScrollBarRender.render_bar(
+        size=10, virtual_size=40, window_size=20, position=0, vertical=True,
+        back_color=Color.parse("#000000"), bar_color=Color.parse("#2e2e2e")).segments  # fmt: skip
+    assert [s.text for s in segments][:5] == ["▄", "█", "█", "█", "▀"]
 
 
 class _Host(App):
@@ -178,3 +186,31 @@ async def test_the_selection_is_left_out_when_there_is_no_room_or_it_is_playing(
         bar.set_selection("Die With A Smile — Lady Gaga")
         await pilot.pause()
         assert "›" not in str(app.query_one("#pb-track-info").render())
+
+
+async def test_track_tables_have_no_grey_background_or_header():
+    from ytm_player.app._app import YTMPlayerApp
+    from ytm_player.ui.widgets.track_table import TrackTable
+
+    class _TableHost(App):
+        CSS = YTMPlayerApp.CSS
+
+        def on_mount(self) -> None:
+            self.register_theme(YTM_DARK)
+            self.theme = YTM_DARK.name
+
+        def get_css_variables(self) -> dict[str, str]:
+            variables = super().get_css_variables()
+            variables.setdefault("selected-item", "#1c1c1c")
+            return variables
+
+        def compose(self) -> ComposeResult:
+            yield TrackTable(id="t")
+
+    app = _TableHost()
+    async with app.run_test(size=(80, 10)) as pilot:
+        await pilot.pause()
+        table = app.query_one(TrackTable)
+        assert table.styles.background.hex.upper() == "#000000"
+        header = table.get_component_styles("datatable--header")
+        assert header.background.hex.upper() == "#000000"

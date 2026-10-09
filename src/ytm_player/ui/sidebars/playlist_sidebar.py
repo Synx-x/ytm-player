@@ -442,7 +442,12 @@ class LibraryPanel(Widget):
 # Pinned items that open a page directly, and the page each one opens.
 # Mood pages and the Browse tabs belong to Explore, so Explore stays highlighted there.
 _NAV_PAGES = {"ps-nav-home": "home", "ps-nav-explore": "explore", "ps-nav-library": "library"}
-_PINNED_PAGE = {**_NAV_PAGES, "ps-nav-liked": "liked_songs", "ps-nav-recent": "recently_played"}
+_PINNED_PAGE = {
+    **_NAV_PAGES,
+    "ps-nav-liked": "liked_songs",
+    "ps-nav-recent": "recently_played",
+    "ps-nav-queue": "queue",
+}
 
 class PlaylistSidebar(Widget):
     """Persistent playlist sidebar visible across all views."""
@@ -533,6 +538,8 @@ class PlaylistSidebar(Widget):
             yield Static("\u2661  Liked Songs", id="ps-nav-liked", classes="ps-pinned-item")
             yield Static("\u25f7  Recently Played", id="ps-nav-recent", classes="ps-pinned-item")
             yield Static("\u2726  Discovery Mix", id="ps-nav-discovery", classes="ps-pinned-item")
+            yield Static("\u2261  Queue", id="ps-nav-queue", classes="ps-pinned-item")
+            yield Static("\u21e9  Import", id="ps-nav-import", classes="ps-pinned-item")
         yield Rule(id="ps-separator")
         yield LibraryPanel("Playlists", id="ps-playlists", instant_select=True)
         yield Rule(id="ps-separator-bottom")
@@ -613,6 +620,12 @@ class PlaylistSidebar(Widget):
         elif target.id == "ps-nav-discovery":
             event.stop()
             self.post_message(self.NavItemClicked("discovery_mix"))
+        elif target.id == "ps-nav-queue":
+            event.stop()
+            self.post_message(self.NavItemClicked("queue"))
+        elif target.id == "ps-nav-import":
+            event.stop()
+            self.post_message(self.NavItemClicked("spotify_import"))
 
     def set_active_page(self, page_name: str) -> None:
         """Highlight the pinned item for the page now showing, as the web menu does."""

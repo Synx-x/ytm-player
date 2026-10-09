@@ -101,3 +101,26 @@ async def test_menu_icons_are_one_cell_and_items_are_spaced_like_the_playlists()
         assert all(cell_len(str(i.render())[0]) == 1 for i in items)
         ys = [i.region.y for i in items]
         assert {b - a for a, b in zip(ys, ys[1:])} == {2}
+
+
+@pytest.mark.parametrize(("item_id", "nav_id"), [("ps-nav-queue", "queue"), ("ps-nav-import", "spotify_import")])
+async def test_queue_and_import_moved_into_the_menu(item_id: str, nav_id: str) -> None:
+    app = _SidebarHost()
+    async with app.run_test(size=(40, 40)) as pilot:
+        await pilot.click(f"#{item_id}")
+        await pilot.pause()
+        assert app.nav[-1] == nav_id
+
+
+async def test_import_from_the_menu_opens_the_spotify_import_popup() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from ytm_player.app._sidebar import SidebarMixin
+    from ytm_player.ui.popups.spotify_import import SpotifyImportPopup
+
+    host = SimpleNamespace(push_screen=MagicMock(), run_worker=MagicMock())
+    await SidebarMixin.on_playlist_sidebar_nav_item_clicked(
+        host, PlaylistSidebar.NavItemClicked("spotify_import")
+    )
+    assert isinstance(host.push_screen.call_args.args[0], SpotifyImportPopup)

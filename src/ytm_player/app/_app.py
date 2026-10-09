@@ -52,7 +52,7 @@ from ytm_player.services.shuffle_prefs import ShufflePreferences
 from ytm_player.services.stream import StreamResolver
 from ytm_player.services.ytmusic import YTMusicService
 from ytm_player.ui.header_bar import HeaderBar
-from ytm_player.ui.playback_bar import FooterBar, PlaybackBar
+from ytm_player.ui.playback_bar import PlaybackBar
 from ytm_player.ui.selection_info_bar import SelectionInfoBar
 from ytm_player.ui.sidebars.lyrics_sidebar import LyricsSidebar
 from ytm_player.ui.sidebars.playlist_sidebar import PlaylistSidebar
@@ -133,6 +133,14 @@ class YTMPlayerApp(
     Screen {
         background: $background;
         color: $foreground;
+    }
+
+    /* Tables sit on the page's black: no grey panel, header or zebra rows. */
+    DataTable,
+    DataTable > .datatable--header,
+    DataTable > .datatable--odd-row,
+    DataTable > .datatable--even-row {
+        background: $background;
     }
 
     /* Thin scroll bars everywhere: one cell wide (about 9 px in kitty), grey
@@ -619,7 +627,6 @@ class YTMPlayerApp(
         with Vertical(id="bottom-stack"):
             yield SelectionInfoBar(id="selection-info-bar")
             yield PlaybackBar(id="playback-bar")
-            yield FooterBar(id="app-footer")
         with Horizontal(id="app-body"):
             yield PlaylistSidebar(id="playlist-sidebar")
             yield Container(id="main-content")

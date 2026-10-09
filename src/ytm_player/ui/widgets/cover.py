@@ -38,6 +38,8 @@ _TIMEOUT = 8
 _FIRST_PAINT_DELAY = 0.12  # seconds: the page lays out and paints its text first
 _IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
 _PLACEHOLDER = "♫"
+# Corner radius of a cover, as a share of its shorter side.
+CORNER_RATIO = 0.06
 _LH3_SIZE = re.compile(r"=w\d+-h\d+")
 
 _renderable_cls: type | None = None
@@ -189,11 +191,12 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
 
         cell = get_cell_size()
         width, height = max(1, cols) * cell.width, max(1, rows) * cell.height
-        target = path.with_name(f"{path.stem}.{width}x{height}.png")
+        target = path.with_name(f"{path.stem}.{width}x{height}.r.png")
         if not target.exists():
             with Image.open(path) as image:
                 image = image.convert("RGB")
                 image.thumbnail((width, height), Image.LANCZOS)
+                image = round_corners(image)
                 tmp = _temp_beside(target)
                 image.save(tmp, format="PNG")
                 tmp.replace(target)
@@ -201,6 +204,22 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
     except Exception:
         logger.debug("Could not shrink cover %s", path, exc_info=True)
         return path
+
+
+def round_corners(image: Any, ratio: float = CORNER_RATIO) -> Any:
+    """*image* with softly rounded corners: transparent outside, drawn over the black page."""
+    from PIL import Image, ImageDraw
+
+    width, height = image.size
+    radius = max(1, round(min(width, height) * ratio))
+    scale = 4  # draw the mask large and shrink it, for smooth edges
+    mask = Image.new("L", (width * scale, height * scale), 0)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, width * scale - 1, height * scale - 1), radius=radius * scale, fill=255
+    )
+    rounded = image.convert("RGBA")
+    rounded.putalpha(mask.resize((width, height), Image.LANCZOS))
+    return rounded
 
 
 def _half_blocks(path: Path, cols: int, rows: int) -> Text | None:

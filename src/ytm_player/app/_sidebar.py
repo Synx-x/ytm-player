@@ -322,6 +322,10 @@ class SidebarMixin(YTMHostBase):
         """Navigate to a pinned page, or start a radio-style mix."""
         if message.nav_id == "discovery_mix":
             self.run_worker(self._start_discovery_mix(), group="discovery-mix", exclusive=True)
+        elif message.nav_id == "spotify_import":
+            from ytm_player.ui.popups.spotify_import import SpotifyImportPopup
+
+            self.push_screen(SpotifyImportPopup())
         elif message.nav_id == "library":
             # The web menu's Library is the grid of every playlist, not the last one opened.
             await self.navigate_to("library", grid=True)

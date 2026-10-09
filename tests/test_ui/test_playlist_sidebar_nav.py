@@ -65,6 +65,8 @@ async def test_sidebar_omits_browse_but_footer_keeps_it():
             "ps-nav-liked",
             "ps-nav-recent",
             "ps-nav-discovery",
+            "ps-nav-queue",
+            "ps-nav-import",
         ]
         assert not app.query("#ps-nav-browse")
         assert app.query_one("#footer-browse").display

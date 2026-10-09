@@ -13,7 +13,6 @@ from textual.widgets import Static
 
 from ytm_player.app._base import YTMHostBase
 from ytm_player.config import Action
-from ytm_player.ui.playback_bar import FooterBar
 
 if TYPE_CHECKING:
     from ytm_player.app._base import PageWidget
@@ -201,13 +200,6 @@ class NavigationMixin(YTMHostBase):
             self.query_one("#playlist-sidebar", PlaylistSidebar).set_active_page(page_name)
         except Exception:
             logger.debug("Failed to update sidebar active item", exc_info=True)
-
-        # Update footer active page indicator.
-        try:
-            footer = self.query_one("#app-footer", FooterBar)
-            footer.set_active_page(page_name)
-        except Exception:
-            logger.debug("Failed to update footer active page indicator", exc_info=True)
 
         # Show/hide the header back/forward buttons based on stack state.
         try:

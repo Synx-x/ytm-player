@@ -70,7 +70,7 @@ YTM_DARK = Theme(
     foreground="#e8e8e8",
     background="#000000",
     surface="#000000",
-    panel="#0a0a0a",
+    panel="#000000",
     dark=True,
     variables={
         "playback-bar-bg": "#000000",
