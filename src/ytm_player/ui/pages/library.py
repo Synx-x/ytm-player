@@ -7,15 +7,17 @@ import time
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, ItemGrid, Vertical, VerticalScroll
+from textual.containers import ItemGrid, Vertical, VerticalScroll
 from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Input, Label, Static
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.pages.hero import HERO_CSS, build_hero
 from ytm_player.ui.pages.home import CARD_WIDTH, HomeCard, relayout_soon
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
+from ytm_player.ui.widgets.cover import best_thumbnail
 from ytm_player.ui.widgets.track_table import TrackTable
 from ytm_player.utils.formatting import build_playlist_subtitle, normalize_tracks
 
@@ -49,58 +51,6 @@ class LibraryPage(TrackFilterHost, Widget):
 
     #content-header {
         height: auto;
-        max-height: 6;
-        padding: 1 2;
-    }
-
-    .content-title-row {
-        height: auto;
-        width: 1fr;
-    }
-    .content-title-row Label {
-        width: auto;
-    }
-    .content-title {
-        text-style: bold;
-    }
-
-    .content-description {
-        color: $text-muted;
-        text-style: italic;
-    }
-
-    .content-subtitle {
-        color: $text-muted;
-    }
-    #start-radio-btn {
-        width: auto;
-        min-width: 14;
-        height: 1;
-        margin: 0 0 0 1;
-        padding: 0 1;
-        color: $primary;
-    }
-    #start-radio-btn:hover {
-        background: $primary 30%;
-    }
-
-    .content-title-spacer {
-        width: 1fr;
-        height: 1;
-    }
-
-    #shuffle-lock-btn {
-        width: auto;
-        height: 1;
-        padding: 0 1;
-        color: $text-muted;
-    }
-    #shuffle-lock-btn.locked {
-        color: $primary;
-        text-style: bold;
-    }
-    #shuffle-lock-btn:hover {
-        background: $accent 30%;
     }
 
     #empty-state {
@@ -138,6 +88,7 @@ class LibraryPage(TrackFilterHost, Widget):
     }
     """
         + TRACK_FILTER_CSS
+        + HERO_CSS
     )
 
     is_loading: reactive[bool] = reactive(True)
@@ -303,33 +254,15 @@ class LibraryPage(TrackFilterHost, Widget):
             # get_playlist() returns 'id' but _start_playlist_radio expects 'playlistId'.
             self._playlist_data = data
             self._playlist_data.setdefault("playlistId", playlist_id)
-            # Update header.
-            header = self.query_one("#content-header", Vertical)
-            await header.remove_children()
-            header.display = True
-            title_row = Horizontal(classes="content-title-row")
-            await header.mount(title_row)
-            await title_row.mount(Label(title, classes="content-title"))
-            await title_row.mount(Static("[▶ Start Radio]", id="start-radio-btn", markup=True))
-            await title_row.mount(Static(classes="content-title-spacer"))
-            host = cast("YTMHostBase", self.app)
-            locked = bool(host.shuffle_prefs.get(playlist_id))
-            lock_label = "Shuffle lock: ON" if locked else "Shuffle lock: off"
-            lock_classes = "locked" if locked else ""
-            await title_row.mount(Static(lock_label, id="shuffle-lock-btn", classes=lock_classes))
-            description = (data.get("description") or "").strip()
-            if description:
-                await header.mount(Label(description, classes="content-description"))
             subtitle = build_playlist_subtitle(owner, privacy, year, track_count)
             if total_count > track_count:
                 subtitle += f" (loading {total_count} total\u2026)"
-            self._subtitle_label = Label(subtitle, classes="content-subtitle")
-            await header.mount(self._subtitle_label)
+            notes = []
             unavailable = len(raw_tracks) - track_count
             if unavailable:
-                await header.mount(
-                    Label(f"{unavailable} unavailable tracks hidden", classes="content-subtitle")
-                )
+                notes.append(f"{unavailable} unavailable tracks hidden")
+            description = (data.get("description") or "").strip()
+            await self._mount_header(title, description, subtitle, notes)
 
             # Load tracks into the table.
             loading.display = False
@@ -366,29 +299,39 @@ class LibraryPage(TrackFilterHost, Widget):
             if not header.display:
                 return
             table = self.query_one("#library-tracks", TrackTable)
-            track_count = len(table.tracks)
-            await header.remove_children()
-            title_row = Horizontal(classes="content-title-row")
-            await header.mount(title_row)
-            await title_row.mount(Label(title, classes="content-title"))
-            await title_row.mount(Static("[▶ Start Radio]", id="start-radio-btn", markup=True))
-            await title_row.mount(Static(classes="content-title-spacer"))
-            host = cast("YTMHostBase", self.app)
-            playlist_id = self._active_playlist_id or ""
-            locked = bool(host.shuffle_prefs.get(playlist_id)) if playlist_id else False
-            lock_label = "Shuffle lock: ON" if locked else "Shuffle lock: off"
-            lock_classes = "locked" if locked else ""
-            await title_row.mount(Static(lock_label, id="shuffle-lock-btn", classes=lock_classes))
-            if description:
-                await header.mount(Label(description, classes="content-description"))
             self._cached_privacy = privacy
             subtitle = build_playlist_subtitle(
-                self._cached_owner, privacy, self._cached_year, track_count
+                self._cached_owner, privacy, self._cached_year, len(table.tracks)
             )
-            self._subtitle_label = Label(subtitle, classes="content-subtitle")
-            await header.mount(self._subtitle_label)
+            await self._mount_header(title, description, subtitle)
         except Exception:
             logger.exception("Failed to refresh library header after edit")
+
+    async def _mount_header(
+        self, title: str, description: str, subtitle: str, notes: list[str] | None = None
+    ) -> None:
+        """The web app's playlist header: cover, title, details, then Play, Shuffle and Radio."""
+        header = self.query_one("#content-header", Vertical)
+        await header.remove_children()
+        header.display = True
+        lines = [Label(description, classes="context-description")] if description else []
+        self._subtitle_label = Label(subtitle, classes="context-subtitle")
+        lines.append(self._subtitle_label)
+        lines += [Label(note, classes="context-subtitle") for note in notes or []]
+        playlist_id = self._active_playlist_id or ""
+        locked = bool(cast("YTMHostBase", self.app).shuffle_prefs.get(playlist_id))
+        actions = [
+            Static("▶  Play", id="play-all-btn"),
+            Static("⤮  Shuffle", id="shuffle-all-btn"),
+            Static("((·))  Radio", id="start-radio-btn"),
+            Static(
+                "Shuffle lock: ON" if locked else "Shuffle lock: off",
+                id="shuffle-lock-btn",
+                classes="locked" if locked else "",
+            ),
+        ]
+        thumbnail = best_thumbnail(getattr(self, "_playlist_data", None) or {}, min_width=544)
+        await header.mount(build_hero("Playlist", title, lines, actions, thumbnail))
 
     def update_track_count(self, delta: int = 0) -> None:
         """Update the subtitle label to reflect the current table track count.
@@ -467,7 +410,11 @@ class LibraryPage(TrackFilterHost, Widget):
         widget = event.widget
         if widget is None:
             return
-        if widget.id == "start-radio-btn":
+        if widget.id in ("play-all-btn", "shuffle-all-btn"):
+            event.stop()
+            shuffle = widget.id == "shuffle-all-btn"
+            self.run_worker(self._play_all(shuffle=shuffle), group="play-all", exclusive=True)
+        elif widget.id == "start-radio-btn":
             event.stop()
             data = getattr(self, "_playlist_data", None)
             if data:
@@ -480,6 +427,16 @@ class LibraryPage(TrackFilterHost, Widget):
         elif widget.id == "shuffle-lock-btn":
             event.stop()
             self._toggle_shuffle_lock()
+
+    async def _play_all(self, *, shuffle: bool) -> None:
+        """The header's Play and Shuffle buttons: play the whole playlist from the top."""
+        tracks = self.query_one("#library-tracks", TrackTable).tracks
+        host = cast("YTMHostBase", self.app)
+        if self._active_playlist_id:
+            host._active_library_playlist_id = self._active_playlist_id
+        await host._replace_queue_and_play(
+            list(tracks), entity_id=self._active_playlist_id, start_index=0, shuffle=shuffle
+        )
 
     def _toggle_shuffle_lock(self) -> None:
         """Flip the per-playlist Shuffle lock and update the button label."""

@@ -22,8 +22,9 @@ from textual.worker import Worker, WorkerState
 
 from ytm_player.config.keymap import Action
 from ytm_player.services.ytmusic import _EXPECTED_API_EXCEPTIONS
+from ytm_player.ui.pages.hero import HERO_CSS, build_hero
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
-from ytm_player.ui.widgets.cover import Cover, best_thumbnail
+from ytm_player.ui.widgets.cover import best_thumbnail
 from ytm_player.ui.widgets.track_table import TrackTable
 from ytm_player.utils.formatting import extract_artist, normalize_tracks
 
@@ -102,50 +103,6 @@ class ContextPage(TrackFilterHost, Widget):
         max-height: 5;
         padding: 1 2;
     }
-    .context-hero {
-        height: auto;
-        padding: 1 2;
-    }
-    .context-hero > Cover {
-        width: 30;
-        height: 15;
-        margin-right: 3;
-    }
-    .context-hero-text {
-        width: 1fr;
-        height: auto;
-    }
-    .context-hero .context-kind {
-        color: $text-muted;
-        margin-top: 2;
-    }
-    .context-hero .context-title {
-        margin: 1 0;
-    }
-    .context-actions {
-        height: 3;
-        margin-top: 1;
-    }
-    .context-actions > Static {
-        width: auto;
-        height: 3;
-        padding: 1 2;
-        margin-right: 1;
-        border: none;
-        background: $boost;
-        content-align: center middle;
-    }
-    .context-actions > Static:hover {
-        background: $primary 30%;
-    }
-    .context-actions > #play-all-btn {
-        background: $foreground;
-        color: $background;
-        text-style: bold;
-    }
-    .context-actions > #play-all-btn:hover {
-        background: $primary;
-    }
     .context-title {
         text-style: bold;
     }
@@ -196,6 +153,7 @@ class ContextPage(TrackFilterHost, Widget):
     }
     """
         + TRACK_FILTER_CSS
+        + HERO_CSS
     )
 
     # ``loading`` is inherited from Widget — re-declaring would shadow
@@ -388,23 +346,14 @@ class ContextPage(TrackFilterHost, Widget):
         show_radio: bool,
     ) -> None:
         """Header laid out like the web: large cover, then title, details and actions."""
-        hero = Horizontal(classes="context-hero")
-        container.mount(hero)
-        hero.mount(Cover(best_thumbnail(self._data, min_width=544)))
-        text = Vertical(classes="context-hero-text")
-        hero.mount(text)
-        text.mount(Label(kind, classes="context-kind"))
-        text.mount(Label(title, classes="context-title"))
-        for line in subtitle_lines:
-            text.mount(Label(line, classes="context-subtitle"))
-        actions = Horizontal(classes="context-actions")
-        text.mount(actions)
-        actions.mount(Static("▶  Play", id="play-all-btn"))
-        actions.mount(Static("⤮  Shuffle", id="shuffle-all-btn"))
+        actions = [Static("▶  Play", id="play-all-btn"), Static("⤮  Shuffle", id="shuffle-all-btn")]
         if show_add:
-            actions.mount(Static("+  Save", id="add-to-library-btn"))
+            actions.append(Static("+  Save", id="add-to-library-btn"))
         if show_radio:
-            actions.mount(Static("((·))  Radio", id="start-radio-btn"))
+            actions.append(Static("((·))  Radio", id="start-radio-btn"))
+        lines = [Label(line, classes="context-subtitle") for line in subtitle_lines]
+        thumbnail = best_thumbnail(self._data, min_width=544)
+        container.mount(build_hero(kind, title, lines, actions, thumbnail))
 
     def _build_album(self, container: Vertical) -> None:
         data = self._data

@@ -15,7 +15,7 @@ Status values: `done`, `partial`, `todo`.
 | L3 | Top bar: search box | Header search box opens Search with the cursor in it | done |
 | L4 | Main area: Home shelves of cover cards | Home page | done |
 | L5 | Bottom player bar: cover, title, artist, controls, progress, volume | Playback bar with real cover | partial |
-| L6 | Real cover art everywhere | Home, album and playlist pages, player bar. Not yet Search, Library, Explore | partial |
+| L6 | Real cover art everywhere | Home, Library grid, album and playlist pages, player bar. Not yet Search, Explore | partial |
 
 ## Behaviour
 
@@ -25,17 +25,23 @@ Status values: `done`, `partial`, `todo`.
 | B2 | Click an album or playlist card: open its page | Home card click, Enter | done |
 | B3 | Shelf ◀ ▶ arrows scroll the row | Shelf arrow buttons, Shift+wheel, tilt wheel | done |
 | B4 | Search from the top bar, results by type | Search page | partial |
-| B5 | Album and playlist page: big cover, Play, track list | Hero header: cover, details, Play, Shuffle, Save, Radio | done |
+| B5 | Album and playlist page: big cover, Play, track list | Hero header on every album and playlist page, sidebar playlists included: cover, details, Play, Shuffle, Save, Radio | done |
 | B6 | Player bar: play/pause, next, previous, seek by click | Playback bar | partial |
 | B7 | Up next queue | Queue page | partial |
 | B8 | Like a song | `+` key and track actions | partial |
 | B9 | Explore: new releases, charts, moods | Browse page | partial |
-| B10 | Library page: grid of your playlists | "Select a playlist" placeholder | todo |
+| B10 | Library page: grid of your playlists | Cover grid, cached for 10 minutes | done |
 | B11 | Back to Home is instant | Home feed cached for 10 minutes | done |
 
 ## Speed
 
 | # | Web | Here | Status |
 | --- | --- | --- | --- |
-| S1 | A song starts in about 1 s | 10 to 15 s (stream resolution through yt-dlp) | todo |
-| S2 | A 400-track playlist opens in about 2 s | about 10 s | todo |
+| S1 | A song starts in about 1 s | Under 1.5 s when the row was highlighted for 0.5 s first (prefetch). 2 to 4 s cold, 8 s when googlevideo returns 403 and the retry runs | partial |
+| S2 | A 400-track playlist opens in about 2 s | About 3.5 s for 383 tracks (300 in the first batch) | partial |
+
+## Responsiveness
+
+| # | Web | Here | Status |
+| --- | --- | --- | --- |
+| R1 | A click on another page lands at once while covers load | Clicks 300 ms apart land about 1 s apart. Covers draw in `render()` and never re-lay-out the page | partial |
