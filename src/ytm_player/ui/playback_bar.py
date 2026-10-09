@@ -18,8 +18,8 @@ from ytm_player.services.queue import RepeatMode
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.album_art import AlbumArt
 from ytm_player.ui.widgets.cover import Cover, has_real_images
-from ytm_player.ui.widgets.progress_bar import PlaybackProgress
-from ytm_player.utils.formatting import extract_artist, truncate
+from ytm_player.ui.widgets.progress_bar import SeekLine
+from ytm_player.utils.formatting import extract_artist, format_duration, truncate
 
 if TYPE_CHECKING:
     from ytm_player.app._base import YTMHostBase
@@ -28,17 +28,18 @@ logger = logging.getLogger(__name__)
 
 # Playback state symbols.
 _ICON_PLAYING = "\u25b6"  # Black right-pointing triangle
-_ICON_PAUSED = "\u23f8"  # Double vertical bar
+_ICON_PAUSED = "\u2016"  # Double vertical line
 _ICON_STOPPED = "\u25a0"  # Black square
 
-_ICON_VOLUME = "\U0001f50a"  # Speaker high volume
+_ICON_VOLUME = "\u25c1))"  # Speaker: triangle and sound waves
 
-_ICON_REPEAT_OFF = "\U0001f501"  # Repeat button
-_ICON_REPEAT_ALL = "\U0001f501"  # Same icon, coloured differently
-_ICON_REPEAT_ONE = "\U0001f502"  # Repeat single button
+# Monochrome, one cell each: state shows in colour, grey off and theme green on.
+_ICON_REPEAT_OFF = "\u21bb"  # Clockwise open circle arrow
+_ICON_REPEAT_ALL = "\u21bb"  # Same icon, in the theme colour
+_ICON_REPEAT_ONE = "\u21bb\u00b9"  # Repeat with a superscript one
 
-_ICON_SHUFFLE_OFF = "\U0001f500"  # Twisted arrows
-_ICON_SHUFFLE_ON = "\U0001f500"  # Same, coloured differently
+_ICON_SHUFFLE_OFF = "\u2928"  # Crossing arrows
+_ICON_SHUFFLE_ON = "\u2928"  # Same icon, in the theme colour
 
 
 # ── Track info widget ─────────────────────────────────────────────
@@ -68,15 +69,16 @@ class _TrackInfo(Widget):
         if self.is_playing and not self.is_paused:
             result.append(f" {_ICON_PLAYING} ", style=f"bold {theme.primary}")
         elif self.is_paused:
-            result.append(f" {_ICON_PAUSED} ", style=f"bold {theme.warning}")
+            result.append(f" {_ICON_PAUSED} ", style=theme.muted_text)
         else:
             result.append(f" {_ICON_STOPPED} ", style=theme.muted_text)
 
         if self.title:
-            max_w = max(10, self.size.width - 30)
-            title_w = min(len(self.title), max_w // 2)
-            artist_w = min(len(self.artist), max_w // 3)
-            album_w = max_w - title_w - artist_w - 8
+            # Two lines, as on the web: the title, then artist and album.
+            width = max(10, self.size.width - 4)
+            title_w = width
+            artist_w = min(len(self.artist), width // 2) if self.album else width
+            album_w = width - artist_w - 3
 
             # FSI...PDI isolates each fragment so RTL titles don't pull
             # adjacent widgets (volume, repeat, shuffle) into the RTL BiDi
@@ -87,14 +89,14 @@ class _TrackInfo(Widget):
                 isolate_bidi(truncate(reorder_rtl_line(self.title), title_w)),
                 style=f"bold {theme.foreground}",
             )
+            result.append("\n   ")
             if self.artist:
-                result.append(" \u2014 ", style=theme.muted_text)
                 result.append(
                     isolate_bidi(truncate(reorder_rtl_line(self.artist), artist_w)),
                     style=theme.secondary,
                 )
             if self.album:
-                result.append(" \u2014 ", style=theme.muted_text)
+                result.append(" \u2022 ", style=theme.muted_text)
                 result.append(
                     isolate_bidi(truncate(reorder_rtl_line(self.album), max(0, album_w))),
                     style=theme.muted_text,
@@ -122,7 +124,7 @@ class _VolumeDisplay(Widget):
     volume: reactive[int] = reactive(80)
 
     def render(self) -> Text:
-        return Text(f" {_ICON_VOLUME} {self.volume:>3}%", style=get_theme().secondary)
+        return Text(f"{_ICON_VOLUME} {self.volume:>3}%", style=get_theme().muted_text)
 
     async def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         event.stop()
@@ -144,7 +146,8 @@ class _RepeatButton(Widget):
     _RepeatButton {
         height: 1;
         width: auto;
-        min-width: 7;
+        min-width: 3;
+        content-align: center middle;
         padding: 0 1;
     }
     _RepeatButton:hover {
@@ -157,10 +160,10 @@ class _RepeatButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.repeat_mode == RepeatMode.ALL:
-            return Text(f"{_ICON_REPEAT_ALL} all", style=f"bold {theme.primary}")
+            return Text(_ICON_REPEAT_ALL, style=f"bold {theme.primary}")
         elif self.repeat_mode == RepeatMode.ONE:
-            return Text(f"{_ICON_REPEAT_ONE} one", style=f"bold {theme.warning}")
-        return Text(f"{_ICON_REPEAT_OFF} off", style=theme.muted_text)
+            return Text(_ICON_REPEAT_ONE, style=f"bold {theme.primary}")
+        return Text(_ICON_REPEAT_OFF, style=theme.muted_text)
 
     async def on_click(self, event: Click) -> None:
         event.stop()
@@ -186,7 +189,8 @@ class _ShuffleButton(Widget):
     _ShuffleButton {
         height: 1;
         width: auto;
-        min-width: 7;
+        min-width: 3;
+        content-align: center middle;
         padding: 0 1;
     }
     _ShuffleButton:hover {
@@ -206,8 +210,8 @@ class _ShuffleButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.shuffle_on:
-            return Text(f"{_ICON_SHUFFLE_ON} on ", style=f"bold {theme.primary}")
-        return Text(f"{_ICON_SHUFFLE_OFF} off", style=theme.muted_text)
+            return Text(_ICON_SHUFFLE_ON, style=f"bold {theme.primary}")
+        return Text(_ICON_SHUFFLE_OFF, style=theme.muted_text)
 
     def watch_locked(self, locked: bool) -> None:
         """Apply / remove the .locked class so CSS can dim the widget."""
@@ -245,7 +249,8 @@ class _ShuffleButton(Widget):
 
 # Heart icon for the like indicator. Same character, styled differently
 # based on like state (filled accent when liked, muted when not).
-_ICON_HEART = "\u2764"  # Heavy Black Heart
+_ICON_HEART = "\u2665"  # Black heart suit (liked)
+_ICON_HEART_OFF = "\u2661"  # White heart suit (not liked)
 
 
 class _HeartButton(Widget):
@@ -269,8 +274,8 @@ class _HeartButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.like_status == "LIKE":
-            return Text(f" {_ICON_HEART} ", style=f"bold {theme.accent}")
-        return Text(f" {_ICON_HEART} ", style=theme.muted_text)
+            return Text(f" {_ICON_HEART} ", style=f"bold {theme.primary}")
+        return Text(f" {_ICON_HEART_OFF} ", style=theme.muted_text)
 
     def on_click(self, event: Click) -> None:
         """Click toggles like via the app's _toggle_like_current."""
@@ -340,49 +345,63 @@ class PlaybackBar(Widget):
     DEFAULT_CSS = """
     PlaybackBar {
         dock: bottom;
-        height: 7;
+        height: 6;
         background: $playback-bar-bg;
-        border-top: solid $border;
     }
-    /* Three groups with even gaps, all centred on the bar's middle row:
-       transport buttons, cover, then title and progress. */
+    /* Under the two-row seek line: three groups, as the web player bar lays
+       them out. Transport and time hug the left and volume and modes hug the
+       right, each sized to its content. The track takes the middle, 4 cells
+       from each side. Every item inside a group has the same 2-cell gap. */
     PlaybackBar #pb-outer {
         height: 1fr;
         width: 1fr;
-        padding: 0 3;
+        padding: 0 2;
         align-vertical: middle;
+    }
+    PlaybackBar #pb-left {
+        width: auto;
+        height: 3;
+        align: left middle;
     }
     PlaybackBar #pb-transport {
         width: 15;
         height: 3;
-        margin: 0 3 0 0;
+        margin-right: 2;
+    }
+    PlaybackBar #pb-right > * {
+        margin-left: 2;
+    }
+    PlaybackBar #pb-heart {
+        margin: 0 0 0 2;
+    }
+    PlaybackBar #pb-time {
+        width: auto;
+        height: 3;
+        content-align: left middle;
+        color: $text-muted;
+    }
+    PlaybackBar #pb-center {
+        width: 1fr;
+        height: 3;
+        margin: 0 4;
+        align: center middle;
     }
     PlaybackBar #pb-art {
         width: 10;
-        height: 4;
-        margin: 0 3 0 0;
+        height: 3;
+        margin-right: 2;
     }
     PlaybackBar Cover#pb-art {
-        width: 8;
-    }
-    PlaybackBar #pb-content {
-        width: 1fr;
-        height: 3;
-    }
-    PlaybackBar #pb-top-row {
-        height: 1;
-        width: 1fr;
-        margin-bottom: 1;
-    }
-    PlaybackBar #pb-bottom-row {
-        height: 1;
-        width: 1fr;
+        width: 6;
     }
     PlaybackBar #pb-track-info {
         width: 1fr;
+        height: 2;
     }
-    PlaybackBar #pb-progress {
-        width: 1fr;
+    PlaybackBar #pb-right {
+        width: auto;
+        height: 3;
+        align: right middle;
     }
     """
 
@@ -390,24 +409,27 @@ class PlaybackBar(Widget):
         from ytm_player.config.settings import get_settings
 
         settings = get_settings()
+        # As on the web: the seek line runs along the top edge, then one row of
+        # controls in three groups (transport and time, track, volume and modes).
+        yield SeekLine(id="pb-progress")
         with Horizontal(id="pb-outer"):
-            with Horizontal(id="pb-transport"):
-                yield _TransportButton("⏮", "prev", id="pb-prev")
-                yield _TransportButton("▶", "play_pause", id="pb-play", classes="-play")
-                yield _TransportButton("⏭", "next", id="pb-next")
-            art: Widget = Cover(id="pb-art") if has_real_images() else AlbumArt(id="pb-art")
-            if not settings.ui.album_art:
-                art.display = False
-            yield art
-            with Vertical(id="pb-content"):
-                with Horizontal(id="pb-top-row"):
-                    yield _TrackInfo(id="pb-track-info")
-                    yield _HeartButton(id="pb-heart")
-                    yield _VolumeDisplay(id="pb-volume")
-                    yield _RepeatButton(id="pb-repeat")
-                    yield _ShuffleButton(id="pb-shuffle")
-                with Horizontal(id="pb-bottom-row"):
-                    yield PlaybackProgress(bar_style=settings.ui.progress_style, id="pb-progress")
+            with Horizontal(id="pb-left"):
+                with Horizontal(id="pb-transport"):
+                    yield _TransportButton("⏮", "prev", id="pb-prev")
+                    yield _TransportButton("▶", "play_pause", id="pb-play", classes="-play")
+                    yield _TransportButton("⏭", "next", id="pb-next")
+                yield Static("0:00 / 0:00", id="pb-time")
+            with Horizontal(id="pb-center"):
+                art: Widget = Cover(id="pb-art") if has_real_images() else AlbumArt(id="pb-art")
+                if not settings.ui.album_art:
+                    art.display = False
+                yield art
+                yield _TrackInfo(id="pb-track-info")
+                yield _HeartButton(id="pb-heart")
+            with Horizontal(id="pb-right"):
+                yield _VolumeDisplay(id="pb-volume")
+                yield _RepeatButton(id="pb-repeat")
+                yield _ShuffleButton(id="pb-shuffle")
 
     def on_click(self, event: Click) -> None:
         """A left click on the cover or title opens the now-playing view. A right-click opens track actions."""
@@ -468,8 +490,12 @@ class PlaybackBar(Widget):
 
     def update_position(self, position: float, duration: float | None = None) -> None:
         """Update the progress bar position."""
-        progress = self.query_one("#pb-progress", PlaybackProgress)
+        progress = self.query_one("#pb-progress", SeekLine)
         progress.update_position(position, duration)
+        total = progress.duration
+        self.query_one("#pb-time", Static).update(
+            f"{format_duration(int(position))} / {format_duration(int(total))}"
+        )
 
     def update_volume(self, volume: int) -> None:
         """Update the volume display."""
