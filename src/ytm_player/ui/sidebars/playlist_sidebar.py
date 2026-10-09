@@ -436,6 +436,12 @@ class LibraryPanel(Widget):
 # ---------------------------------------------------------------------------
 
 
+
+# Pinned items that open a page directly, and the page each one opens.
+# Explore is the Browse page.
+_NAV_PAGES = {"ps-nav-home": "home", "ps-nav-explore": "browse", "ps-nav-library": "library"}
+_PINNED_PAGE = {**_NAV_PAGES, "ps-nav-liked": "liked_songs", "ps-nav-recent": "recently_played"}
+
 class PlaylistSidebar(Widget):
     """Persistent playlist sidebar visible across all views."""
 
@@ -516,6 +522,10 @@ class PlaylistSidebar(Widget):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="ps-pinned-nav"):
+            # The web app's left menu: Home, Explore, Library.
+            yield Static("\u2302 Home", id="ps-nav-home", classes="ps-pinned-item")
+            yield Static("\u25ce Explore", id="ps-nav-explore", classes="ps-pinned-item")
+            yield Static("\u25a4 Library", id="ps-nav-library", classes="ps-pinned-item")
             yield Static("\u2665 Liked Songs", id="ps-nav-liked", classes="ps-pinned-item")
             yield Static("\u23f1 Recently Played", id="ps-nav-recent", classes="ps-pinned-item")
             yield Static("\u266b Discovery Mix", id="ps-nav-discovery", classes="ps-pinned-item")
@@ -584,7 +594,10 @@ class PlaylistSidebar(Widget):
         target = event.widget
         if target is None:
             return
-        if target.id == "ps-nav-liked":
+        if target.id in _NAV_PAGES:
+            event.stop()
+            self.post_message(self.NavItemClicked(_NAV_PAGES[target.id]))
+        elif target.id == "ps-nav-liked":
             event.stop()
             self.post_message(self.NavItemClicked("liked_songs"))
         elif target.id == "ps-nav-recent":
@@ -593,6 +606,11 @@ class PlaylistSidebar(Widget):
         elif target.id == "ps-nav-discovery":
             event.stop()
             self.post_message(self.NavItemClicked("discovery_mix"))
+
+    def set_active_page(self, page_name: str) -> None:
+        """Highlight the pinned item for the page now showing, as the web menu does."""
+        for item in self.query(".ps-pinned-item"):
+            item.set_class(_PINNED_PAGE.get(item.id or "") == page_name, "active")
 
     # -- Public helpers for sidebar actions --
 

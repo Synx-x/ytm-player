@@ -259,6 +259,18 @@ class SidebarMixin(YTMHostBase):
     def on_header_bar_toggle_lyrics_sidebar(self, message: HeaderBar.ToggleLyricsSidebar) -> None:
         self._toggle_lyrics_sidebar()
 
+    async def on_header_bar_search_requested(self, message: HeaderBar.SearchRequested) -> None:
+        """Top-bar search box click → open Search with the cursor in its box."""
+        await self.navigate_to("search")
+
+        def _focus_input() -> None:
+            try:
+                self.query_one("#search-input").focus()
+            except Exception:
+                logger.debug("Search input not found to focus", exc_info=True)
+
+        self.call_after_refresh(_focus_input)
+
     async def on_header_bar_back_requested(self, message: HeaderBar.BackRequested) -> None:
         """Header back-button click → pop the nav stack."""
         await self.navigate_to("back")

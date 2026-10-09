@@ -205,6 +205,10 @@ class HomePage(Widget):
             Shelf(_clean_shelf_title(s.get("title", "")), [c for c in s["contents"] if c])
             for s in self._shelves
         )
+        # A cached feed mounts in the same tick as the page itself, and nothing
+        # else asks for a repaint afterwards: the shelves were laid out but not
+        # drawn until the user scrolled. Ask for the repaint explicitly.
+        self.call_after_refresh(scroll.refresh, layout=True)
 
     # ── keyboard ──────────────────────────────────────────────────
 

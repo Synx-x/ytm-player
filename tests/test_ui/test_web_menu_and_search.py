@@ -1,0 +1,91 @@
+"""The web-style left menu (Home, Explore, Library) and the top-bar search box, clicked through Pilot."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+
+import pytest
+from textual.app import App, ComposeResult
+from textual.widgets import Input
+
+from ytm_player.app._sidebar import SidebarMixin
+from ytm_player.ui.header_bar import HeaderBar
+from ytm_player.ui.sidebars.playlist_sidebar import PlaylistSidebar
+
+
+class _SidebarHost(App):
+    def __init__(self) -> None:
+        super().__init__()
+        self.nav: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        yield PlaylistSidebar(id="playlist-sidebar")
+
+    def on_playlist_sidebar_nav_item_clicked(self, message: PlaylistSidebar.NavItemClicked) -> None:
+        self.nav.append(message.nav_id)
+
+
+@pytest.mark.parametrize(
+    ("item_id", "page"),
+    [("ps-nav-home", "home"), ("ps-nav-explore", "browse"), ("ps-nav-library", "library"),
+     ("ps-nav-liked", "liked_songs"), ("ps-nav-recent", "recently_played")],  # fmt: skip
+)
+async def test_each_menu_item_opens_its_page(item_id: str, page: str) -> None:
+    app = _SidebarHost()
+    async with app.run_test(size=(40, 30)) as pilot:
+        await pilot.click(f"#{item_id}")
+        await pilot.pause()
+        assert app.nav == [page]
+
+
+async def test_menu_order_matches_the_web_app() -> None:
+    app = _SidebarHost()
+    async with app.run_test(size=(40, 30)):
+        labels = [str(w.render()) for w in app.query(".ps-pinned-item")]
+        assert labels[:3] == ["⌂ Home", "◎ Explore", "▤ Library"]
+
+
+async def test_active_page_is_highlighted_and_moves() -> None:
+    app = _SidebarHost()
+    async with app.run_test(size=(40, 30)):
+        sidebar = app.query_one(PlaylistSidebar)
+        sidebar.set_active_page("home")
+        active = [w.id for w in app.query(".ps-pinned-item.active")]
+        assert active == ["ps-nav-home"]
+        sidebar.set_active_page("browse")
+        assert [w.id for w in app.query(".ps-pinned-item.active")] == ["ps-nav-explore"]
+        sidebar.set_active_page("search")  # a page with no menu item
+        assert not app.query(".ps-pinned-item.active")
+
+
+class _SearchHost(App):
+    """Header bar plus the app's real search handler, with navigation faked."""
+
+    on_header_bar_search_requested = SidebarMixin.on_header_bar_search_requested
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.navigate_to = AsyncMock(side_effect=self._show_search)
+
+    def get_css_variables(self) -> dict[str, str]:
+        variables = super().get_css_variables()
+        variables.setdefault("playback-bar-bg", "#222222")
+        return variables
+
+    def compose(self) -> ComposeResult:
+        yield HeaderBar(id="app-header")
+
+    async def _show_search(self, page: str) -> None:
+        await self.mount(Input(id="search-input"))
+
+
+async def test_top_bar_search_opens_search_with_the_cursor_in_the_box() -> None:
+    app = _SearchHost()
+    async with app.run_test(size=(140, 10)) as pilot:
+        box = app.query_one("#header-search")
+        assert "Search songs, albums, artists, podcasts" in str(box.render())
+        await pilot.click("#header-search")
+        for _ in range(5):
+            await pilot.pause()
+        app.navigate_to.assert_awaited_once_with("search")
+        assert app.focused is app.query_one("#search-input")

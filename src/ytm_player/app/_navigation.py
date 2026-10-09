@@ -184,6 +184,14 @@ class NavigationMixin(YTMHostBase):
         # sidebar that was focused on the previous page.
         self._active_pane = "content"
 
+        # Highlight the sidebar's pinned item for this page, as the web menu does.
+        try:
+            from ytm_player.ui.sidebars.playlist_sidebar import PlaylistSidebar
+
+            self.query_one("#playlist-sidebar", PlaylistSidebar).set_active_page(page_name)
+        except Exception:
+            logger.debug("Failed to update sidebar active item", exc_info=True)
+
         # Update footer active page indicator.
         try:
             footer = self.query_one("#app-footer", FooterBar)

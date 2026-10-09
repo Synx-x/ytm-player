@@ -20,6 +20,9 @@ class HeaderBar(Widget):
     class ToggleLyricsSidebar(Message):
         """Emitted when the lyrics sidebar toggle is clicked."""
 
+    class SearchRequested(Message):
+        """The top bar's search box was clicked."""
+
     class BackRequested(Message):
         """Emitted when the back button is clicked."""
 
@@ -35,6 +38,19 @@ class HeaderBar(Widget):
     HeaderBar #header-inner {
         height: 1;
         width: 1fr;
+    }
+    HeaderBar #header-search {
+        width: 1fr;
+        max-width: 60;
+        height: 1;
+        margin: 0 2;
+        padding: 0 2;
+        background: $boost;
+        color: $text-muted;
+    }
+    HeaderBar #header-search:hover {
+        color: $text;
+        background: $primary 20%;
     }
     HeaderBar #header-spacer {
         width: 1fr;
@@ -79,6 +95,9 @@ class HeaderBar(Widget):
             yield Static("\u2630 Playlists", id="toggle-playlist", classes="hb-toggle")
             yield Static("\u2190 Back", id="back-btn", classes="hb-toggle")
             yield Static("Forward \u2192", id="forward-btn", classes="hb-toggle")
+            yield Static(
+                "\u2315  Search songs, albums, artists, podcasts", id="header-search"
+            )
             yield Static(id="header-spacer")
             yield Static("\u266b Lyrics", id="toggle-lyrics", classes="hb-toggle")
 
@@ -93,6 +112,9 @@ class HeaderBar(Widget):
         elif target.id == "toggle-lyrics":
             event.stop()
             self.post_message(self.ToggleLyricsSidebar())
+        elif target.id == "header-search":
+            event.stop()
+            self.post_message(self.SearchRequested())
         elif target.id == "back-btn":
             event.stop()
             self.post_message(self.BackRequested())
