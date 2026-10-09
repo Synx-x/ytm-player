@@ -405,7 +405,14 @@ class PlaybackBar(Widget):
                     yield PlaybackProgress(bar_style=settings.ui.progress_style, id="pb-progress")
 
     def on_click(self, event: Click) -> None:
-        """Right-click on the playback bar opens track actions."""
+        """A left click on the cover or title opens the now-playing view. A right-click opens track actions."""
+        if event.button == 1:
+            target = event.widget
+            ids = {w.id for w in (target.ancestors_with_self if target else [])}
+            if ids & {"pb-art", "pb-track-info"}:
+                event.stop()
+                self.app.run_worker(self._toggle_now_playing(), group="now-playing", exclusive=True)
+            return
         if event.button != 3:
             return
         app = cast("YTMHostBase", self.app)
@@ -416,6 +423,13 @@ class PlaybackBar(Widget):
             track = app.queue.current_track
         if track:
             self.post_message(self.TrackRightClicked(track))
+
+    async def _toggle_now_playing(self) -> None:
+        app = cast("YTMHostBase", self.app)
+        if getattr(app, "_current_page", None) == "now_playing":
+            await app.navigate_to("back")
+        else:
+            await app.navigate_to("now_playing")
 
     # ── Public update methods ────────────────────────────────────────
 

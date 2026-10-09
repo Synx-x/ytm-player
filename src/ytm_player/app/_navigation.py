@@ -29,6 +29,7 @@ PAGE_NAMES = (
     "browse",
     "explore",
     "mood",
+    "now_playing",
     "queue",
     "help",
     "liked_songs",
@@ -269,6 +270,7 @@ class NavigationMixin(YTMHostBase):
         from ytm_player.ui.pages.help import HelpPage
         from ytm_player.ui.pages.home import HomePage
         from ytm_player.ui.pages.library import LibraryPage
+        from ytm_player.ui.pages.now_playing import NowPlayingPage
         from ytm_player.ui.pages.liked_songs import LikedSongsPage
         from ytm_player.ui.pages.queue import QueuePage
         from ytm_player.ui.pages.recently_played import RecentlyPlayedPage
@@ -282,6 +284,7 @@ class NavigationMixin(YTMHostBase):
             "browse": BrowsePage,
             "explore": ExplorePage,
             "mood": MoodPage,
+            "now_playing": NowPlayingPage,
             "queue": QueuePage,
             "help": HelpPage,
             "liked_songs": LikedSongsPage,
