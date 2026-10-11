@@ -6,6 +6,7 @@ from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
+from ytm_player.ui import autohide_scrollbars
 from ytm_player.ui.autohide_scrollbars import HOVER_CLASS, AutoHideScrollbarsMixin
 
 CSS = """
@@ -47,5 +48,31 @@ async def test_the_thumb_hides_when_the_pointer_leaves_the_window():
         await pilot.hover("#l1")
         await pilot.pause()
         app._set_mouse_over(None, None)
+        await pilot.pause()
+        assert not app.query_one("#left").has_class(HOVER_CLASS)
+
+
+async def test_the_thumb_hides_after_the_pointer_rests(monkeypatch):
+    monkeypatch.setattr(autohide_scrollbars, "HIDE_AFTER_SECONDS", 0.2)
+    app = _Host()
+    async with app.run_test(size=(40, 12)) as pilot:
+        await pilot.hover("#l1")
+        await pilot.pause()
+        assert app.query_one("#left").has_class(HOVER_CLASS)
+        await pilot.pause(0.4)
+        assert not app.query_one("#left").has_class(HOVER_CLASS)
+        await pilot.hover("#l2")
+        await pilot.pause()
+        assert app.query_one("#left").has_class(HOVER_CLASS), "a move shows it again"
+
+
+async def test_the_thumb_hides_when_the_window_loses_focus():
+    from textual import events
+
+    app = _Host()
+    async with app.run_test(size=(40, 12)) as pilot:
+        await pilot.hover("#l1")
+        await pilot.pause()
+        app.post_message(events.AppBlur())
         await pilot.pause()
         assert not app.query_one("#left").has_class(HOVER_CLASS)
