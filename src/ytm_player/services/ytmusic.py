@@ -540,9 +540,13 @@ class YTMusicService:
             return []
         if not isinstance(categories, dict) or not categories:
             return []
-        # The first category is "Moods & moments", in the account's language.
-        first = next(iter(categories.values()))
-        return [c for c in first if isinstance(c, dict) and c.get("params")]
+        # Home's chips are the "Moods & moments" category. Its position varies by
+        # account, so find it by name, and fall back to the first category.
+        moods = next(
+            (items for title, items in categories.items() if "mood" in str(title).lower()),
+            next(iter(categories.values())),
+        )
+        return [c for c in moods if isinstance(c, dict) and c.get("params")]
 
     async def get_mood_playlists(self, params: str, limit: int = 60) -> list[dict[str, Any]] | None:
         """Return the playlists of one mood or genre chip from the Explore feed.
