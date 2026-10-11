@@ -325,6 +325,11 @@ class SidebarMixin(YTMHostBase):
         else:
             self._prompt_create_playlist()
 
+    def on_playlist_sidebar_new_playlist_requested(
+        self, message: PlaylistSidebar.NewPlaylistRequested
+    ) -> None:
+        self._prompt_create_playlist()
+
     async def on_playlist_sidebar_nav_item_clicked(
         self, message: PlaylistSidebar.NavItemClicked
     ) -> None:
