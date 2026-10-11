@@ -104,6 +104,8 @@ class UISettings:
     remember_layout: bool = True
     # Show ytm's own CPU and memory use in the top bar, beside Lyrics.
     show_usage: bool = True
+    # Draw all text in capitals. Only the display changes, not titles or queries.
+    uppercase: bool = True
     # Icon glyphs: "auto" (Nerd Font icons when one is installed), "nerd", or "unicode".
     icons: str = "auto"
 

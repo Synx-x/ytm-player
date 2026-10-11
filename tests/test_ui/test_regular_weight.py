@@ -50,3 +50,31 @@ async def test_rendered_lines_carry_no_bold_or_italic():
             styled = [seg.style for seg in strip if seg.text.strip() and seg.style]
             assert styled, selector
             assert not any(st.bold or st.italic for st in styled), selector
+
+
+def test_uppercase_keeps_every_column():
+    from ytm_player.ui.regular_weight import UppercaseText
+
+    segments = [
+        Segment("Gone Forever", Style(color="green")),
+        Segment("Straße ﬁx", None),
+        Segment("", None),
+        Segment("x", None, [(1,)]),
+    ]
+    out = UppercaseText().apply(segments, Color(0, 0, 0))
+    assert out[0].text == "GONE FOREVER" and out[0].style.color.name == "green"
+    assert out[1].text == "STRAßE ﬁX" and len(out[1].text) == len(segments[1].text)
+    assert out[2] is segments[2] and out[3] is segments[3]
+
+
+async def test_uppercase_setting_turns_capitals_on_and_off(monkeypatch):
+    from ytm_player.config.settings import get_settings
+
+    for on, expected in ((True, "CSS BOLD"), (False, "css bold")):
+        monkeypatch.setattr(get_settings().ui, "uppercase", on)
+        app = _Host()
+        async with app.run_test(size=(40, 4)) as pilot:
+            await pilot.pause()
+            widget = app.query_one("#css-bold")
+            (strip,) = widget.render_lines(Region(0, 0, widget.size.width, 1))
+            assert strip.text.strip() == expected
