@@ -10,6 +10,8 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
+from ytm_player.ui.icons import icon
+
 
 class HeaderBar(Widget):
     """Top bar with toggle buttons for playlist and lyrics sidebars."""
@@ -92,14 +94,14 @@ class HeaderBar(Widget):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="header-inner"):
-            yield Static("\u2630 Playlists", id="toggle-playlist", classes="hb-toggle")
-            yield Static("\u2190 Back", id="back-btn", classes="hb-toggle")
-            yield Static("Forward \u2192", id="forward-btn", classes="hb-toggle")
+            yield Static(f"{icon('menu')} Playlists", id="toggle-playlist", classes="hb-toggle")
+            yield Static(f"{icon('back')} Back", id="back-btn", classes="hb-toggle")
+            yield Static(f"Forward {icon('forward')}", id="forward-btn", classes="hb-toggle")
             yield Static(
-                "\u2315  Search songs, albums, artists, podcasts", id="header-search"
+                f"{icon('search')}  Search songs, albums, artists, podcasts", id="header-search"
             )
             yield Static(id="header-spacer")
-            yield Static("\u266b Lyrics", id="toggle-lyrics", classes="hb-toggle")
+            yield Static(f"{icon('lyrics')} Lyrics", id="toggle-lyrics", classes="hb-toggle")
 
     def on_click(self, event: Click) -> None:
         """Route clicks on toggle buttons to the correct message."""

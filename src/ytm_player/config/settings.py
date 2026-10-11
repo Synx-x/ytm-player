@@ -102,6 +102,8 @@ class UISettings:
     show_queue_source: bool = True
     # Reopen with the layout the last run closed with: lyrics panel and album art.
     remember_layout: bool = True
+    # Icon glyphs: "auto" (Nerd Font icons when one is installed), "nerd", or "unicode".
+    icons: str = "auto"
 
 
 @dataclass

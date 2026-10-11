@@ -26,6 +26,7 @@ from textual.widgets import Label, Static
 
 from ytm_player.config.keymap import Action
 from ytm_player.config.settings import get_settings
+from ytm_player.ui.icons import icon
 from ytm_player.ui.pages.browse import _clean_shelf_title, navigate_browse_item
 from ytm_player.ui.widgets.cover import Cover, best_thumbnail
 
@@ -189,8 +190,8 @@ class Shelf(Vertical):
     def compose(self) -> ComposeResult:
         with Horizontal(classes="shelf-head"):
             yield Label(self.title, classes="shelf-title")
-            yield Static("◀", classes="shelf-arrow shelf-prev")
-            yield Static("▶", classes="shelf-arrow shelf-next")
+            yield Static(icon("chevron_left"), classes="shelf-arrow shelf-prev")
+            yield Static(icon("chevron_right"), classes="shelf-arrow shelf-next")
         with ShelfRow(classes="shelf-row"):
             for item in self.items:
                 yield HomeCard(item)

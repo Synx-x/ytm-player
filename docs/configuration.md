@@ -133,6 +133,7 @@ show_selection_info = true   # show the focused item in the player bar, beside t
 sidebar_overflow = "truncate"  # "truncate" (1-row + ellipsis) or "wrap" (multi-line names)
 show_queue_source = true     # show "Generated from: …" header on radio/discovery queues
 remember_layout = true       # reopen the lyrics panel and album art as the last run left them
+icons = "auto"               # nerd, unicode, or auto (Nerd Font icons when you have a Nerd Font installed)
 ```
 
 ytm-player saves the resume point to `resume.json` every 5 seconds while the app runs. Volume, shuffle, repeat, the queue and each page's playlist sidebar go to `session.json`, which is rewritten only when one of them changes. Neither file waits for a clean exit. A closed terminal or a killed process keeps them.

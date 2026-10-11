@@ -22,6 +22,7 @@ from textual.worker import Worker, WorkerState
 
 from ytm_player.config.keymap import Action
 from ytm_player.services.ytmusic import _EXPECTED_API_EXCEPTIONS
+from ytm_player.ui.icons import icon
 from ytm_player.ui.pages.hero import HERO_CSS, build_hero
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
 from ytm_player.ui.widgets.cover import best_thumbnail
@@ -346,11 +347,14 @@ class ContextPage(TrackFilterHost, Widget):
         show_radio: bool,
     ) -> None:
         """Header laid out like the web: large cover, then title, details and actions."""
-        actions = [Static("▶  Play", id="play-all-btn"), Static("⤮  Shuffle", id="shuffle-all-btn")]
+        actions = [
+            Static(f"{icon('play')}  Play", id="play-all-btn"),
+            Static(f"{icon('shuffle')}  Shuffle", id="shuffle-all-btn"),
+        ]
         if show_add:
-            actions.append(Static("+  Save", id="add-to-library-btn"))
+            actions.append(Static(f"{icon('save')}  Save", id="add-to-library-btn"))
         if show_radio:
-            actions.append(Static("((·))  Radio", id="start-radio-btn"))
+            actions.append(Static(f"{icon('radio')}  Radio", id="start-radio-btn"))
         lines = [Label(line, classes="context-subtitle") for line in subtitle_lines]
         thumbnail = best_thumbnail(self._data, min_width=544)
         container.mount(build_hero(kind, title, lines, actions, thumbnail))
@@ -603,7 +607,7 @@ class ContextPage(TrackFilterHost, Widget):
             self.app.notify("Added to library", timeout=2)
             try:
                 btn = self.query_one("#add-to-library-btn", Static)
-                btn.update("✓  Saved")
+                btn.update(f"{icon('saved')}  Saved")
             except Exception:
                 pass
             try:

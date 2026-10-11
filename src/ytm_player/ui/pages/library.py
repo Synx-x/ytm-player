@@ -14,6 +14,7 @@ from textual.widget import Widget
 from textual.widgets import Input, Label, Static
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.icons import icon
 from ytm_player.ui.pages.hero import HERO_CSS, build_hero
 from ytm_player.ui.pages.home import CARD_WIDTH, HomeCard, relayout_soon
 from ytm_player.ui.track_filter import TRACK_FILTER_CSS, TrackFilterHost
@@ -321,9 +322,9 @@ class LibraryPage(TrackFilterHost, Widget):
         playlist_id = self._active_playlist_id or ""
         locked = bool(cast("YTMHostBase", self.app).shuffle_prefs.get(playlist_id))
         actions = [
-            Static("▶  Play", id="play-all-btn"),
-            Static("⤮  Shuffle", id="shuffle-all-btn"),
-            Static("((·))  Radio", id="start-radio-btn"),
+            Static(f"{icon('play')}  Play", id="play-all-btn"),
+            Static(f"{icon('shuffle')}  Shuffle", id="shuffle-all-btn"),
+            Static(f"{icon('radio')}  Radio", id="start-radio-btn"),
             Static(
                 "Shuffle lock: ON" if locked else "Shuffle lock: off",
                 id="shuffle-lock-btn",

@@ -17,6 +17,7 @@ from textual.widgets import Input, Label, ListItem, ListView, Static
 
 from ytm_player.config.keymap import Action
 from ytm_player.config.settings import get_settings
+from ytm_player.ui.icons import icon
 from ytm_player.ui.pages.home import Shelf, card_subtitle, navigate_browse_item, relayout_soon
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.cover import Cover, best_thumbnail
@@ -327,7 +328,7 @@ class TopResult(Horizontal, can_focus=True):
             yield Label(card_subtitle(self.item) if kind != "artist" else
                         self.item.get("description") or "Artist", classes="top-sub")  # fmt: skip
             if kind in ("song", "video") or (kind in ("album", "playlist") and self._playlist_id):
-                yield Static("▶  Play", id="top-play")
+                yield Static(f"{icon('play')}  Play", id="top-play")
 
     @property
     def _playlist_id(self) -> str:

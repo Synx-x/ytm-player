@@ -19,6 +19,7 @@ from textual.widget import Widget
 from textual.widgets import Label, Static
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.icons import icon
 from ytm_player.ui.pages.home import CARD_WIDTH, HomeCard, Shelf, relayout_soon
 
 if TYPE_CHECKING:
@@ -79,9 +80,19 @@ class ExplorePage(Widget):
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="explore-scroll"):
             with Horizontal(id="explore-buttons"):
-                yield Static("✦  New releases", id="explore-releases", classes="explore-button")
-                yield Static("▲  Charts", id="explore-charts", classes="explore-button")
-                yield Static("☺  Moods & genres", id="explore-moods-btn", classes="explore-button")
+                yield Static(
+                    f"{icon('new_releases')}  New releases",
+                    id="explore-releases",
+                    classes="explore-button",
+                )
+                yield Static(
+                    f"{icon('charts')}  Charts", id="explore-charts", classes="explore-button"
+                )
+                yield Static(
+                    f"{icon('moods')}  Moods & genres",
+                    id="explore-moods-btn",
+                    classes="explore-button",
+                )
             yield Label("Loading Explore…", classes="explore-status")
 
     def on_mount(self) -> None:

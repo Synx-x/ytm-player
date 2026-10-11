@@ -16,6 +16,7 @@ from textual.widgets.data_table import Column, RowKey
 
 from ytm_player.config import Action
 from ytm_player.config.settings import get_settings
+from ytm_player.ui.icons import icon
 from ytm_player.ui.selection_info_bar import SelectionChanged
 from ytm_player.utils.formatting import extract_artist, extract_duration, format_duration
 
@@ -728,7 +729,7 @@ class TrackTable(DataTable):
                 text_hex = Color.parse(get_theme().text or "#ffffff").hex
             except Exception:
                 text_hex = "#ffffff"
-            _set_row_label(row_key, Text("▶", style=f"bold {text_hex}"))
+            _set_row_label(row_key, Text(icon("play"), style=f"bold {text_hex}"))
 
         self._playing_index = new_index
 

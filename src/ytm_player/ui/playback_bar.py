@@ -16,6 +16,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from ytm_player.services.queue import RepeatMode
+from ytm_player.ui.icons import icon, volume_icon
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.album_art import AlbumArt
 from ytm_player.ui.widgets.cover import Cover, has_real_images, track_thumbnail
@@ -31,19 +32,8 @@ logger = logging.getLogger(__name__)
 # Fewest free columns on the artist line worth showing the selection in.
 _MIN_SELECTION_ROOM = 12
 
-_ICON_PLAYING = "\u25b6"  # Black right-pointing triangle
-_ICON_PAUSED = "\u2016"  # Double vertical line
-_ICON_STOPPED = "\u25a0"  # Black square
-
-_ICON_VOLUME = "\u25c1))"  # Speaker: triangle and sound waves
-
-# Monochrome, one cell each: state shows in colour, grey off and theme green on.
-_ICON_REPEAT_OFF = "\u21bb"  # Clockwise open circle arrow
-_ICON_REPEAT_ALL = "\u21bb"  # Same icon, in the theme colour
-_ICON_REPEAT_ONE = "\u21bb\u00b9"  # Repeat with a superscript one
-
-_ICON_SHUFFLE_OFF = "\u2928"  # Crossing arrows
-_ICON_SHUFFLE_ON = "\u2928"  # Same icon, in the theme colour
+# Icons come from ui/icons.py. Repeat and shuffle are monochrome: state shows
+# in colour, grey off and theme green on.
 
 
 # ── Track info widget ─────────────────────────────────────────────
@@ -73,11 +63,11 @@ class _TrackInfo(Widget):
 
         # State icon
         if self.is_playing and not self.is_paused:
-            result.append(f" {_ICON_PLAYING} ", style=f"bold {theme.primary}")
+            result.append(f" {icon('play')} ", style=f"bold {theme.primary}")
         elif self.is_paused:
-            result.append(f" {_ICON_PAUSED} ", style=theme.muted_text)
+            result.append(f" {icon('pause')} ", style=theme.muted_text)
         else:
-            result.append(f" {_ICON_STOPPED} ", style=theme.muted_text)
+            result.append(f" {icon('stop')} ", style=theme.muted_text)
 
         if self.title:
             # Two lines, as on the web: the title, then artist and album.
@@ -147,7 +137,7 @@ class _VolumeDisplay(Widget):
     volume: reactive[int] = reactive(80)
 
     def render(self) -> Text:
-        return Text(f"{_ICON_VOLUME} {self.volume:>3}%", style=get_theme().muted_text)
+        return Text(f"{volume_icon(self.volume)} {self.volume:>3}%", style=get_theme().muted_text)
 
     async def on_mouse_scroll_up(self, event: MouseScrollUp) -> None:
         event.stop()
@@ -183,10 +173,10 @@ class _RepeatButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.repeat_mode == RepeatMode.ALL:
-            return Text(_ICON_REPEAT_ALL, style=f"bold {theme.primary}")
+            return Text(icon("repeat"), style=f"bold {theme.primary}")
         elif self.repeat_mode == RepeatMode.ONE:
-            return Text(_ICON_REPEAT_ONE, style=f"bold {theme.primary}")
-        return Text(_ICON_REPEAT_OFF, style=theme.muted_text)
+            return Text(icon("repeat_one"), style=f"bold {theme.primary}")
+        return Text(icon("repeat_off"), style=theme.muted_text)
 
     async def on_click(self, event: Click) -> None:
         event.stop()
@@ -233,8 +223,8 @@ class _ShuffleButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.shuffle_on:
-            return Text(_ICON_SHUFFLE_ON, style=f"bold {theme.primary}")
-        return Text(_ICON_SHUFFLE_OFF, style=theme.muted_text)
+            return Text(icon("shuffle"), style=f"bold {theme.primary}")
+        return Text(icon("shuffle_off"), style=theme.muted_text)
 
     def watch_locked(self, locked: bool) -> None:
         """Apply / remove the .locked class so CSS can dim the widget."""
@@ -272,8 +262,6 @@ class _ShuffleButton(Widget):
 
 # Heart icon for the like indicator. Same character, styled differently
 # based on like state (filled accent when liked, muted when not).
-_ICON_HEART = "\u2665"  # Black heart suit (liked)
-_ICON_HEART_OFF = "\u2661"  # White heart suit (not liked)
 
 
 class _HeartButton(Widget):
@@ -297,8 +285,8 @@ class _HeartButton(Widget):
     def render(self) -> Text:
         theme = get_theme()
         if self.like_status == "LIKE":
-            return Text(f" {_ICON_HEART} ", style=f"bold {theme.primary}")
-        return Text(f" {_ICON_HEART_OFF} ", style=theme.muted_text)
+            return Text(f" {icon('heart')} ", style=f"bold {theme.primary}")
+        return Text(f" {icon('heart_off')} ", style=theme.muted_text)
 
     def on_click(self, event: Click) -> None:
         """Click toggles like via the app's _toggle_like_current."""
@@ -447,9 +435,11 @@ class PlaybackBar(Widget):
         with Horizontal(id="pb-outer"):
             with Horizontal(id="pb-left"):
                 with Horizontal(id="pb-transport"):
-                    yield _TransportButton("⏮", "prev", id="pb-prev")
-                    yield _TransportButton("▶", "play_pause", id="pb-play", classes="-play")
-                    yield _TransportButton("⏭", "next", id="pb-next")
+                    yield _TransportButton(icon("prev"), "prev", id="pb-prev")
+                    yield _TransportButton(
+                        icon("play"), "play_pause", id="pb-play", classes="-play"
+                    )
+                    yield _TransportButton(icon("next"), "next", id="pb-next")
                 yield Static("0:00 / 0:00", id="pb-time")
             with Horizontal(id="pb-center"):
                 art: Widget = Cover(id="pb-art") if has_real_images() else AlbumArt(id="pb-art")
@@ -521,7 +511,7 @@ class PlaybackBar(Widget):
         info.is_playing = is_playing
         info.is_paused = is_paused
         self.query_one("#pb-play", _TransportButton).update(
-            "⏸" if is_playing and not is_paused else "▶"
+            icon("pause") if is_playing and not is_paused else icon("play")
         )
 
     def update_position(self, position: float, duration: float | None = None) -> None:

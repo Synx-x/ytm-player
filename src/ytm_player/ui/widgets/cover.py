@@ -30,6 +30,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from ytm_player.config.paths import CACHE_DIR
+from ytm_player.ui.icons import icon
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,6 @@ _TIMEOUT = 8
 _FIRST_PAINT_DELAY = 0.12  # seconds: the page lays out and paints its text first
 _IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
 _STALE_PART_SECONDS = 3600  # a temp file this old belongs to a killed download
-_PLACEHOLDER = "♫"
 # Corner radius of a cover, as a share of its shorter side.
 CORNER_RATIO = 0.06
 # YouTube's hqdefault video thumbnail, and where the square art sits in it.
@@ -338,7 +338,7 @@ class Cover(Widget):
     def render(self) -> Any:
         if self._picture is not None:
             return self._picture
-        return Text(_PLACEHOLDER)
+        return Text(icon("note"))
 
     def on_mount(self) -> None:
         if self.url:

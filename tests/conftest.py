@@ -115,3 +115,14 @@ def _no_direct_stream_lookups(monkeypatch: pytest.MonkeyPatch) -> None:
     from ytm_player.services import direct_stream
 
     monkeypatch.setattr(direct_stream, "lookup", lambda video_id, quality: None)
+
+
+@pytest.fixture(autouse=True)
+def _unicode_icons(monkeypatch: pytest.MonkeyPatch):
+    """Tests see the Unicode icon set, whatever fonts the machine has installed."""
+    from ytm_player.ui import icons
+
+    monkeypatch.setattr(icons, "_nerd_font_installed", lambda: False)
+    icons.active_set.cache_clear()
+    yield
+    icons.active_set.cache_clear()

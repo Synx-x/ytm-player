@@ -15,6 +15,7 @@ from textual.widget import Widget
 from textual.widgets import Input, Label, ListItem, ListView, Rule, Static
 
 from ytm_player.config.settings import get_settings
+from ytm_player.ui.icons import icon
 from ytm_player.ui.selection_info_bar import SelectionChanged
 from ytm_player.utils.formatting import copy_to_clipboard, truncate
 
@@ -532,14 +533,26 @@ class PlaylistSidebar(Widget):
     def compose(self) -> ComposeResult:
         with Vertical(id="ps-pinned-nav"):
             # The web app's left menu: Home, Explore, Library.
-            yield Static("\u2302  Home", id="ps-nav-home", classes="ps-pinned-item")
-            yield Static("\u25ce  Explore", id="ps-nav-explore", classes="ps-pinned-item")
-            yield Static("\u25a4  Library", id="ps-nav-library", classes="ps-pinned-item")
-            yield Static("\u2661  Liked Songs", id="ps-nav-liked", classes="ps-pinned-item")
-            yield Static("\u25f7  Recently Played", id="ps-nav-recent", classes="ps-pinned-item")
-            yield Static("\u2726  Discovery Mix", id="ps-nav-discovery", classes="ps-pinned-item")
-            yield Static("\u2261  Queue", id="ps-nav-queue", classes="ps-pinned-item")
-            yield Static("\u21e9  Import", id="ps-nav-import", classes="ps-pinned-item")
+            yield Static(f"{icon('home')}  Home", id="ps-nav-home", classes="ps-pinned-item")
+            yield Static(
+                f"{icon('explore')}  Explore", id="ps-nav-explore", classes="ps-pinned-item"
+            )
+            yield Static(
+                f"{icon('library')}  Library", id="ps-nav-library", classes="ps-pinned-item"
+            )
+            yield Static(
+                f"{icon('liked')}  Liked Songs", id="ps-nav-liked", classes="ps-pinned-item"
+            )
+            yield Static(
+                f"{icon('recent')}  Recently Played", id="ps-nav-recent", classes="ps-pinned-item"
+            )
+            yield Static(
+                f"{icon('discovery')}  Discovery Mix",
+                id="ps-nav-discovery",
+                classes="ps-pinned-item",
+            )
+            yield Static(f"{icon('queue')}  Queue", id="ps-nav-queue", classes="ps-pinned-item")
+            yield Static(f"{icon('import')}  Import", id="ps-nav-import", classes="ps-pinned-item")
         yield Rule(id="ps-separator")
         yield LibraryPanel("Playlists", id="ps-playlists", instant_select=True)
         yield Rule(id="ps-separator-bottom")
