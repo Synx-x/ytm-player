@@ -177,6 +177,31 @@ class LyricsSidebar(Widget):
         color: $text-muted;
         padding: 0 2;
     }
+
+    LyricsSidebar .ls-source {
+        display: none;
+        height: 1;
+        padding: 0 2;
+        color: $text-muted;
+    }
+
+    /* In the Now Playing pane, as the web app shows lyrics: centred, the
+       sung line bright and the rest dim, with the source underneath. */
+    LyricsSidebar.in-pane {
+        width: 1fr;
+        border-left: none;
+    }
+    LyricsSidebar.in-pane .ls-header {
+        display: none;
+    }
+    LyricsSidebar.in-pane _LyricLine {
+        text-align: center;
+    }
+    LyricsSidebar.in-pane .ls-source {
+        display: block;
+        text-align: center;
+        width: 1fr;
+    }
     """
 
     current_line_index: reactive[int] = reactive(-1)
@@ -201,6 +226,7 @@ class LyricsSidebar(Widget):
         yield Label("", id="ls-title", classes="ls-header")
         yield Label("No track playing", id="ls-status", classes="ls-status")
         yield VerticalScroll(id="ls-scroll", classes="ls-scroll")
+        yield Label("", id="ls-source", classes="ls-source")
 
     def on_mount(self) -> None:
         self.query_one("#ls-scroll").display = False
@@ -332,7 +358,7 @@ class LyricsSidebar(Widget):
 
                     lrc = await get_synced_lyrics(title, artist, duration)
                     if lrc:
-                        return {"lyrics": lrc, "hasTimestamps": False}
+                        return {"lyrics": lrc, "hasTimestamps": False, "source": "Source: LRCLIB"}
                 except Exception:
                     logger.debug("LRCLIB fallback failed", exc_info=True)
 
@@ -351,6 +377,10 @@ class LyricsSidebar(Widget):
             self._show_status("Failed to load lyrics.")
 
     def _process_lyrics(self, data: dict[str, Any]) -> None:
+        try:
+            self.query_one("#ls-source", Label).update(data.get("source") or "")
+        except Exception:
+            logger.debug("Lyrics source label not ready", exc_info=True)
         lyrics_data = data.get("lyrics")
         if not lyrics_data:
             self._show_status("No lyrics available.")

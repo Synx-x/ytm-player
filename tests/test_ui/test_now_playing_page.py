@@ -46,7 +46,8 @@ class _Host(App):
     def get_css_variables(self) -> dict[str, str]:
         variables = super().get_css_variables()
         for name in ("selected-item", "playback-bar-bg", "progress-filled", "progress-empty",
-                     "active-tab", "inactive-tab"):  # fmt: skip
+                     "active-tab", "inactive-tab", "lyrics-played", "lyrics-current",
+                     "lyrics-upcoming"):  # fmt: skip
             variables.setdefault(name, "#333333")
         return variables
 
@@ -172,3 +173,52 @@ async def test_up_next_is_centred_at_most_90_percent_of_its_half():
         assert listing.width <= round(half.width * 0.9)
         left_gap, right_gap = listing.x - half.x, half.right - listing.right
         assert abs(left_gap - right_gap) <= 1 and left_gap > 0
+
+
+async def test_the_pane_has_the_web_apps_three_tabs_and_starts_on_up_next():
+    app = _Host("now_playing")
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        tabs = [str(t.render()) for t in app.query(".np-tab")]
+        assert tabs == ["Up next", "Lyrics", "Related"]
+        assert app.query_one("#np-tab-up-next").has_class("-active")
+        assert app.query_one("#np-switch").current == "np-queue"
+
+
+async def test_clicking_lyrics_shows_the_centred_lyrics_in_the_pane():
+    from ytm_player.ui.sidebars.lyrics_sidebar import LyricsSidebar
+
+    app = _Host("now_playing")
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        await pilot.click("#np-tab-lyrics")
+        await pilot.pause()
+        page = app.query_one(NowPlayingPage)
+        assert page.active_tab == "lyrics"
+        assert app.query_one("#np-switch").current == "np-lyrics"
+        lyrics = app.query_one("#np-lyrics", LyricsSidebar)
+        assert lyrics.has_class("in-pane") and lyrics.display
+        assert not app.query_one("#np-source").display
+        page.toggle_lyrics_tab()
+        assert page.active_tab == "up-next"
+
+
+async def test_related_lists_songs_and_a_click_plays_one():
+    from ytm_player.ui.pages.now_playing import RelatedRow
+
+    app = _Host("now_playing")
+    related = [{"videoId": "R1", "title": "Related One", "artists": [{"name": "Someone"}],
+                "thumbnails": []}]  # fmt: skip
+    app.ytmusic = type("Y", (), {"get_related_songs": AsyncMock(return_value=related)})()
+    app.play_track = AsyncMock()
+    async with app.run_test(size=(160, 45)) as pilot:
+        await pilot.pause(0.2)
+        await pilot.click("#np-tab-related")
+        await pilot.pause(0.3)
+        rows = list(app.query(RelatedRow))
+        assert [r.track["title"] for r in rows] == ["Related One"]
+        app.ytmusic.get_related_songs.assert_awaited_once()
+        await pilot.click(rows[0])
+        await pilot.pause(0.2)
+        app.play_track.assert_awaited()
+        assert app.play_track.await_args.args[0]["video_id"] == "R1"

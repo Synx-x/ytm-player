@@ -35,7 +35,16 @@ class SidebarMixin(YTMHostBase):
         self._apply_playlist_sidebar(new_state)
 
     def _toggle_lyrics_sidebar(self) -> None:
-        """Toggle the lyrics sidebar globally."""
+        """Toggle the lyrics sidebar, or on Now Playing switch its pane to the Lyrics tab.
+
+        The web app shows lyrics only inside the now-playing pane.
+        """
+        from ytm_player.ui.pages.now_playing import NowPlayingPage
+
+        page = next(iter(self.query(NowPlayingPage)), None)
+        if page is not None and getattr(self, "current_page_name", "") == "now_playing":
+            page.toggle_lyrics_tab()
+            return
         self._lyrics_sidebar_open = not self._lyrics_sidebar_open
         self._apply_lyrics_sidebar(self._lyrics_sidebar_open)
 

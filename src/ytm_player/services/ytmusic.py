@@ -184,7 +184,9 @@ def _two_row_cards(node: Any) -> list[dict[str, Any]]:
                 cards.append(
                     {
                         "resultType": "playlist",
-                        "title": "".join(r.get("text", "") for r in item.get("title", {}).get("runs", [])),
+                        "title": "".join(
+                            r.get("text", "") for r in item.get("title", {}).get("runs", [])
+                        ),
                         "description": "".join(
                             r.get("text", "") for r in item.get("subtitle", {}).get("runs", [])
                         ),
@@ -790,6 +792,24 @@ class YTMusicService:
                 playlist_id,
             )
             return []
+
+    async def get_related_songs(self, video_id: str) -> list[dict[str, Any]]:
+        """Songs the web app lists under Related for *video_id*, or [] when there are none."""
+        try:
+            watch = await self._call(self.client.get_watch_playlist, videoId=video_id, limit=1)
+            browse_id = watch.get("related") if isinstance(watch, dict) else None
+            if not browse_id:
+                return []
+            sections = await self._call(self.client.get_song_related, browse_id)
+        except Exception:
+            logger.exception("get_related_songs failed for video=%r", video_id)
+            return []
+        songs: list[dict[str, Any]] = []
+        for section in sections or []:
+            for item in section.get("contents") or []:
+                if isinstance(item, dict) and item.get("videoId"):
+                    songs.append(item)
+        return songs
 
     async def get_chart_shelf_tracks(
         self, playlist_id: str, limit: int = 25
