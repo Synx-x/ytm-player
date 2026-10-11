@@ -10,7 +10,12 @@ from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
 
+from ytm_player.config.settings import get_settings
 from ytm_player.ui.icons import icon
+from ytm_player.utils.usage import UsageSampler, format_usage
+
+# Seconds between refreshes of the CPU and memory readout.
+USAGE_REFRESH_SECONDS = 2.0
 
 
 class HeaderBar(Widget):
@@ -58,6 +63,12 @@ class HeaderBar(Widget):
         width: 1fr;
         height: 1;
     }
+    HeaderBar #header-usage {
+        width: auto;
+        height: 1;
+        padding: 0 1;
+        color: $primary;
+    }
     HeaderBar .hb-toggle {
         height: 1;
         width: auto;
@@ -101,7 +112,24 @@ class HeaderBar(Widget):
                 f"{icon('search')}  Search songs, albums, artists, podcasts", id="header-search"
             )
             yield Static(id="header-spacer")
+            if get_settings().ui.show_usage:
+                yield Static(id="header-usage")
             yield Static(f"{icon('lyrics')} Lyrics", id="toggle-lyrics", classes="hb-toggle")
+
+    def on_mount(self) -> None:
+        if get_settings().ui.show_usage:
+            self._usage = UsageSampler()
+            # A sample needs some elapsed time behind it to mean anything.
+            self.set_timer(0.5, self.refresh_usage)
+            self.set_interval(USAGE_REFRESH_SECONDS, self.refresh_usage)
+
+    def refresh_usage(self) -> None:
+        """Show CPU use since the last refresh and current memory."""
+        try:
+            label = self.query_one("#header-usage", Static)
+        except Exception:
+            return
+        label.update(format_usage(self._usage.sample()))
 
     def on_click(self, event: Click) -> None:
         """Route clicks on toggle buttons to the correct message."""

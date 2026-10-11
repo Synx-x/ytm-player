@@ -133,6 +133,7 @@ show_selection_info = true   # show the focused item in the player bar, beside t
 sidebar_overflow = "truncate"  # "truncate" (1-row + ellipsis) or "wrap" (multi-line names)
 show_queue_source = true     # show "Generated from: …" header on radio/discovery queues
 remember_layout = true       # reopen the lyrics panel and album art as the last run left them
+show_usage = true            # show ytm's own CPU and memory use in the top bar, beside Lyrics
 icons = "auto"               # nerd, unicode, or auto (Nerd Font icons when you have a Nerd Font installed)
 ```
 
