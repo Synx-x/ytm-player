@@ -323,3 +323,85 @@ async def test_home_warms_the_songs_on_its_first_shelves():
         await _ready(pilot)
         ids = app.warm_streams.call_args.args[0]
         assert ids[0] == "vid123" and "v2x" in ids
+
+
+def _song(i: int) -> dict:
+    return {"title": f"Pick {i}", "videoId": f"q{i}", "album": {"name": "A", "id": "MPRE1"},
+            "artists": [{"name": f"Artist {i}"}], "thumbnails": [{"url": f"t{i}", "width": 60}]}  # fmt: skip
+
+
+async def test_a_shelf_of_songs_is_a_grid_four_rows_high(monkeypatch):
+    from ytm_player.ui.pages.home import SONG_ROWS, SongCard
+
+    feed = [{"title": "Quick picks", "contents": [_song(i) for i in range(9)]}]
+    app = _Host(feed)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        shelf = app.query_one(Shelf)
+        columns = list(shelf.query(".song-column"))
+        assert [len(c.query(SongCard)) for c in columns] == [SONG_ROWS, SONG_ROWS, 1]
+        assert len(shelf.cards()) == 9, "song rows are cards for keys and clicks"
+        assert shelf.query_one(ShelfRow).has_class("-songs")
+
+
+async def test_clicking_a_song_row_opens_the_song(monkeypatch):
+    from ytm_player.ui.pages.home import SongCard
+
+    opened: list[str] = []
+
+    async def fake_open(app, item):
+        opened.append(item["videoId"])
+
+    monkeypatch.setattr(home, "_open_item", fake_open)
+    app = _Host([{"title": "Quick picks", "contents": [_song(i) for i in range(4)]}])
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        await pilot.click(list(app.query(SongCard))[2])
+        for _ in range(3):
+            await pilot.pause()
+        assert opened == ["q2"]
+
+
+async def test_mixed_shelves_keep_cover_cards():
+    from ytm_player.ui.pages.home import SongCard, is_song_shelf
+
+    assert not is_song_shelf([SONG, ALBUM, PLAYLIST, SONG])
+    assert not is_song_shelf([_song(1), _song(2)]), "too short for a grid"
+    app = _Host(_feed())
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        assert not app.query(SongCard)
+
+
+async def test_mood_chips_sit_above_the_shelves_and_open_a_mood(monkeypatch):
+    monkeypatch.setattr(home, "_chips_cache", None)
+    app = _Host(_feed())
+    app.ytmusic.get_mood_chips = AsyncMock(
+        return_value=[{"title": "Energize", "params": "p1"}, {"title": "Relax", "params": "p2"}]
+    )
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        for _ in range(10):
+            await pilot.pause()
+            if app.query(".home-chip"):
+                break
+        chips = list(app.query(".home-chip"))
+        assert [str(c.render()) for c in chips] == ["Energize", "Relax"]
+        scroll = app.query_one("#home-scroll")
+        assert scroll.children[0].id == "home-chips"
+        await pilot.click(chips[1])
+        for _ in range(3):
+            await pilot.pause()
+        app.navigate_to.assert_awaited_with("mood", title="Relax", params="p2")
+
+
+async def test_home_shows_without_chips_when_they_fail(monkeypatch):
+    monkeypatch.setattr(home, "_chips_cache", None)
+    app = _Host(_feed())
+    app.ytmusic.get_mood_chips = AsyncMock(side_effect=RuntimeError("offline"))
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _ready(pilot)
+        for _ in range(5):
+            await pilot.pause()
+        assert not app.query(".home-chip")
+        assert app.query(Shelf)

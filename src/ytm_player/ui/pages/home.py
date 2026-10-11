@@ -5,6 +5,10 @@ art (see ``ui/widgets/cover.py``). A card plays a song or opens an album,
 playlist or artist page through ``navigate_browse_item``, the routing the
 Browse page already uses.
 
+Mood chips (Energize, Relax ...) sit above the shelves, as on the web, and
+open that mood's playlists. A shelf of songs, such as Quick picks, is a grid
+of song rows four high instead of cover cards.
+
 Keys: j/k move between shelves, h/l or the arrow keys move along a shelf,
 Enter opens the focused card. Each shelf also has ◀ ▶ buttons, and Shift+wheel
 or a tilt wheel scrolls it sideways, as on the web.
@@ -45,6 +49,8 @@ FIRST_PAINT_GAP = 0.05  # seconds, about three frames
 # (monotonic time, shelves). The r key always fetches a fresh feed.
 _feed_cache: tuple[float, list[dict[str, Any]]] | None = None
 _LOAD_FAILED = "Couldn't load your Home feed. Press r to try again."
+# The mood chips change rarely, so one fetch serves the whole run.
+_chips_cache: list[dict[str, Any]] | None = None
 
 
 def relayout_soon(widget: Widget) -> None:
@@ -171,15 +177,81 @@ async def _open_item(app: Any, item: dict[str, Any]) -> None:
         app.notify("Couldn't open that item.", severity="warning")
 
 
+# Rows in one column of a song shelf, as the web app's Quick picks shows them.
+SONG_ROWS = 4
+SONG_CARD_WIDTH = 44
+
+
+def is_song_shelf(items: list[dict[str, Any]]) -> bool:
+    """True for a shelf of songs: every item plays a track that belongs to an album."""
+    return len(items) >= SONG_ROWS and all(
+        item.get("videoId") and item.get("album") and not item.get("browseId") for item in items
+    )
+
+
+class SongCard(HomeCard):
+    """A song row in a song shelf: a small cover, title over artist. Click or Enter plays it."""
+
+    DEFAULT_CSS = f"""
+    SongCard {{ layout: horizontal; width: {SONG_CARD_WIDTH}; height: 2; margin: 0 2 1 0; }}
+    SongCard > Cover {{ width: 4; height: 2; margin-right: 2; }}
+    SongCard:hover {{ background: $boost; }}
+    SongCard:focus {{ background: $boost; }}
+    """
+
+    def compose(self) -> ComposeResult:
+        from ytm_player.ui.pages.now_playing import UpNextText
+
+        yield Cover(best_thumbnail(self.item, min_width=60))
+        artists = ", ".join(
+            a.get("name", "") for a in self.item.get("artists") or [] if a.get("name")
+        )
+        yield UpNextText(self.item.get("title", ""), artists, "", False)
+
+
+class MoodChips(HorizontalScroll):
+    """The web app's mood chips above the Home shelves."""
+
+    DEFAULT_CSS = """
+    MoodChips { height: 2; margin-bottom: 1; scrollbar-size-horizontal: 0; }
+    MoodChips > .home-chip { width: auto; height: 1; padding: 0 2; margin-right: 1;
+        background: $boost; }
+    MoodChips > .home-chip:hover { background: $primary 30%; }
+    """
+
+    def __init__(self, moods: list[dict[str, Any]], **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.moods = moods
+
+    def compose(self) -> ComposeResult:
+        for mood in self.moods:
+            chip = Static(mood.get("title", ""), classes="home-chip")
+            chip.mood = mood  # type: ignore[attr-defined]
+            yield chip
+
+    def on_click(self, event: events.Click) -> None:
+        mood = getattr(event.widget, "mood", None)
+        if mood is None or event.button != 1:
+            return
+        event.stop()
+        target = {"title": mood.get("title", ""), "params": mood["params"]}
+        self.app.run_worker(
+            cast("YTMHostBase", self.app).navigate_to("mood", **target), group="home-open"
+        )
+
+
 class Shelf(Vertical):
     """A titled row of cards with ◀ ▶ scroll buttons."""
 
-    DEFAULT_CSS = """
-    Shelf { height: auto; margin-bottom: 1; }
-    Shelf > .shelf-head { height: 1; margin-bottom: 1; }
-    Shelf .shelf-title { width: 1fr; text-style: bold; }
-    Shelf .shelf-arrow { width: 5; content-align: center middle; color: $text-muted; }
-    Shelf .shelf-arrow:hover { color: $text; background: $boost; }
+    DEFAULT_CSS = f"""
+    Shelf {{ height: auto; margin-bottom: 1; }}
+    Shelf > .shelf-head {{ height: 1; margin-bottom: 1; }}
+    Shelf .shelf-title {{ width: 1fr; text-style: bold; }}
+    Shelf .shelf-arrow {{ width: 5; content-align: center middle; color: $text-muted; }}
+    Shelf .shelf-arrow:hover {{ color: $text; background: $boost; }}
+    Shelf .song-column {{ width: {SONG_CARD_WIDTH + 2}; height: auto; }}
+    /* A song shelf is four rows of three lines, not a row of tall cards. */
+    Shelf ShelfRow.-songs {{ height: {SONG_ROWS * 3 + 1}; }}
     """
 
     def __init__(self, title: str, items: list[dict[str, Any]], **kwargs: Any) -> None:
@@ -192,9 +264,16 @@ class Shelf(Vertical):
             yield Label(self.title, classes="shelf-title")
             yield Static(icon("chevron_left"), classes="shelf-arrow shelf-prev")
             yield Static(icon("chevron_right"), classes="shelf-arrow shelf-next")
-        with ShelfRow(classes="shelf-row"):
-            for item in self.items:
-                yield HomeCard(item)
+        songs = is_song_shelf(self.items)
+        with ShelfRow(classes="shelf-row -songs" if songs else "shelf-row"):
+            if songs:
+                for start in range(0, len(self.items), SONG_ROWS):
+                    with Vertical(classes="song-column"):
+                        for item in self.items[start : start + SONG_ROWS]:
+                            yield SongCard(item)
+            else:
+                for item in self.items:
+                    yield HomeCard(item)
 
     def on_click(self, event: events.Click) -> None:
         widget = event.widget
@@ -272,6 +351,24 @@ class HomePage(Widget):
             await asyncio.sleep(FIRST_PAINT_GAP)
             await scroll.mount_all(built[FIRST_SHELVES:])
         relayout_soon(self)
+        self.run_worker(self._load_chips(), group="home-chips", exclusive=True)
+
+    async def _load_chips(self) -> None:
+        """Mount the mood chips above the shelves. Home shows without them if they fail."""
+        global _chips_cache
+        if _chips_cache is None:
+            ytmusic = cast("YTMHostBase", self.app).ytmusic
+            try:
+                moods = await ytmusic.get_mood_chips() if ytmusic else []
+            except Exception:
+                logger.debug("Mood chips unavailable", exc_info=True)
+                return
+            if not isinstance(moods, list) or not moods:
+                return
+            _chips_cache = moods
+        scroll = self.query_one("#home-scroll", VerticalScroll)
+        if not self.query(MoodChips):
+            await scroll.mount(MoodChips(_chips_cache, id="home-chips"), before=0)
 
     # ── keyboard ──────────────────────────────────────────────────
 

@@ -531,6 +531,19 @@ class YTMusicService:
             return None
         return result if isinstance(result, dict) else None
 
+    async def get_mood_chips(self) -> list[dict[str, Any]]:
+        """The moods the web app shows as chips on Home (Energize, Relax ...), each with params."""
+        try:
+            categories = await self._call(self.client.get_mood_categories)
+        except Exception:
+            logger.exception("get_mood_categories failed")
+            return []
+        if not isinstance(categories, dict) or not categories:
+            return []
+        # The first category is "Moods & moments", in the account's language.
+        first = next(iter(categories.values()))
+        return [c for c in first if isinstance(c, dict) and c.get("params")]
+
     async def get_mood_playlists(self, params: str, limit: int = 60) -> list[dict[str, Any]] | None:
         """Return the playlists of one mood or genre chip from the Explore feed.
 
