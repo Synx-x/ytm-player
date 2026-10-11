@@ -312,6 +312,40 @@ def _half_blocks(path: Path, cols: int, rows: int) -> Text | None:
         return None
 
 
+async def _make_picture(path: Path, cols: int, rows: int) -> Any:
+    """The picture of the cached cover *path* at *cols* x *rows* cells, built off the event loop."""
+    renderable = renderable_class()
+    if renderable is None:
+        return await asyncio.to_thread(_half_blocks, path, cols, rows)
+    if has_real_images():
+        # The kitty encode runs while drawing, so hand it a small file.
+        path = await asyncio.to_thread(shrink_to_cells, path, cols, rows)
+    return await asyncio.to_thread(renderable, str(path), cols, rows)
+
+
+async def load_cover_picture(url: str, cols: int, rows: int) -> Any:
+    """Download *url* once and return its picture at *cols* x *rows* cells, or None.
+
+    For widgets that draw covers inside their own rows, such as the track table.
+    Show the picture while holding ``cover_image_turn()``, then await ``cover_image_gap()``.
+    """
+    path = await asyncio.to_thread(fetch_thumbnail, url) if url else None
+    if path is None:
+        return None
+    return await _make_picture(path, cols, rows)
+
+
+def cover_image_turn() -> asyncio.Lock:
+    """The lock that keeps kitty images from being sent in the same frame."""
+    return _image_turn()
+
+
+async def cover_image_gap() -> None:
+    """The pause between two kitty images, about two frames. None without kitty."""
+    if has_real_images():
+        await asyncio.sleep(_IMAGE_GAP)
+
+
 class Cover(Widget):
     """A fixed-size cover. It shows ♫ until its picture is ready, then draws the picture."""
 
@@ -388,14 +422,7 @@ class Cover(Widget):
             self._picture_size = (0, 0)
             self.refresh()
             return
-        renderable = renderable_class()
-        if renderable is None:
-            picture: Any = await asyncio.to_thread(_half_blocks, path, cols, rows)
-        else:
-            if has_real_images():
-                # The kitty encode runs while drawing, so hand it a small file.
-                path = await asyncio.to_thread(shrink_to_cells, path, cols, rows)
-            picture = await asyncio.to_thread(renderable, str(path), cols, rows)
+        picture = await _make_picture(path, cols, rows)
         async with _image_turn():
             if token != self._token or not self.is_attached:
                 return

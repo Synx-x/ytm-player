@@ -126,3 +126,14 @@ def _unicode_icons(monkeypatch: pytest.MonkeyPatch):
     icons.active_set.cache_clear()
     yield
     icons.active_set.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _one_line_track_rows(monkeypatch: pytest.MonkeyPatch):
+    """Track tables use one-line rows, so row coordinates in tests stay simple.
+
+    Cover rows have their own tests in tests/test_ui/test_track_table_covers.py.
+    """
+    from ytm_player.config.settings import get_settings
+
+    monkeypatch.setattr(get_settings().ui, "track_covers", False)

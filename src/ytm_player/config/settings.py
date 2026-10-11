@@ -106,6 +106,8 @@ class UISettings:
     show_usage: bool = True
     # Draw all text in capitals. Only the display changes, not titles or queries.
     uppercase: bool = True
+    # Track lists show a small cover on each row, as the web app does. Album pages keep numbers.
+    track_covers: bool = True
     # Icon glyphs: "auto" (Nerd Font icons when one is installed), "nerd", or "unicode".
     icons: str = "auto"
 

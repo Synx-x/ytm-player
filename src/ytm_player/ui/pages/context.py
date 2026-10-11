@@ -380,7 +380,8 @@ class ContextPage(TrackFilterHost, Widget):
         kind = (data.get("type") or "Album").capitalize()
         self._mount_hero(container, kind, title, lines, show_add=True, show_radio=False)
 
-        table = TrackTable(show_album=False, id="context-tracks")
+        # An album lists its tracks by number, with no covers, as the web app does.
+        table = TrackTable(show_album=False, show_covers=False, id="context-tracks")
         container.mount(table)
         table.load_tracks(tracks)
 

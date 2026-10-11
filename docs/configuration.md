@@ -135,6 +135,7 @@ show_queue_source = true     # show "Generated from: …" header on radio/discov
 remember_layout = true       # reopen the lyrics panel and album art as the last run left them
 show_usage = true            # show ytm's own CPU and memory use in the top bar, beside Lyrics
 uppercase = true             # draw all text in capitals; titles and search queries keep their case
+track_covers = true          # a small cover on each track row, as on music.youtube.com; album pages keep numbers
 icons = "auto"               # nerd, unicode, or auto (Nerd Font icons when you have a Nerd Font installed)
 ```
 
