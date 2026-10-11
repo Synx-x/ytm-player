@@ -21,9 +21,10 @@ def test_shrinks_to_the_cells_pixel_box_and_caches(tmp_path, monkeypatch):
     assert out.name == "big.176x176.r2.png"
     with Image.open(out) as image:
         assert image.size == (176, 176)
-    stamp = out.stat().st_mtime_ns
+    # A rebuild renames a new file into place. A hit only touches the old one.
+    inode = out.stat().st_ino
     assert cover.shrink_to_cells(src, 22, 11) == out
-    assert out.stat().st_mtime_ns == stamp, "the cached copy was rebuilt"
+    assert out.stat().st_ino == inode, "the cached copy was rebuilt"
 
 
 def test_a_broken_image_falls_back_to_the_original(tmp_path):

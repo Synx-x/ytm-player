@@ -69,6 +69,7 @@ If one source can't be loaded, All shows the other and says so in the footer. Re
 [cache]
 enabled = true
 max_size_mb = 1024           # 1GB default LRU audio cache
+covers_max_mb = 150          # cover image cache; least recently shown covers go first
 prefetch_next = true         # resolve next track's stream URL in background for instant skip
 location = ""                # blank = default cache dir; set a path to override
 ```
@@ -134,7 +135,7 @@ show_queue_source = true     # show "Generated from: …" header on radio/discov
 remember_layout = true       # reopen the lyrics panel and album art as the last run left them
 ```
 
-ytm-player saves volume, shuffle, repeat, the queue, the resume point and each page's playlist sidebar to `session.json` every 5 seconds while the app runs. It does not wait for a clean exit. A closed terminal or a killed process keeps them.
+ytm-player saves the resume point to `resume.json` every 5 seconds while the app runs. Volume, shuffle, repeat, the queue and each page's playlist sidebar go to `session.json`, which is rewritten only when one of them changes. Neither file waits for a clean exit. A closed terminal or a killed process keeps them.
 
 `theme` is the startup default. Changing theme from Textual's command palette (`Ctrl+P` → `Theme`) updates the current session and is saved in `session.json`, not `config.toml`. To make the active theme the new default, run `Ctrl+P` → `Set Current Theme as Default`.
 

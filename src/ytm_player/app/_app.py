@@ -61,6 +61,8 @@ from ytm_player.ui.theme import DEFAULT_LYRIC_CURRENT, ThemeColors, get_theme
 logger = logging.getLogger(__name__)
 
 _POSITION_POLL_INTERVAL = 0.5
+# Seconds between cover cache trims while the app runs.
+_COVER_PRUNE_SECONDS = 3600
 
 # Cache for theme.toml so get_css_variables doesn't re-parse TOML on
 # every CSS resolution.  Invalidated when the file's mtime changes
@@ -644,6 +646,18 @@ class YTMPlayerApp(
         self.notify("Session expired — refreshing browser credentials…", timeout=10)
         await self.wait_for_refresh()
 
+    def _prune_covers(self) -> None:
+        """Trim the cover cache to [cache] covers_max_mb in a worker thread."""
+        from ytm_player.ui.widgets.cover import prune_covers
+
+        self.run_worker(
+            partial(prune_covers, self.settings.cache.covers_max_mb),
+            thread=True,
+            group="prune-covers",
+            exclusive=True,
+            exit_on_error=False,
+        )
+
     async def on_mount(self) -> None:
         """Initialize services and navigate to the startup page."""
         # Wire the asyncio loop exception handler so background-task
@@ -763,6 +777,8 @@ class YTMPlayerApp(
         # Restore session state (volume, shuffle, repeat) from last session.
         await self._restore_session_state()
         self._start_session_autosave()
+        self._prune_covers()
+        self.set_interval(_COVER_PRUNE_SECONDS, self._prune_covers)
 
         # Start MPRIS if enabled (Linux only — dbus-fast is Linux-only, and
         # macOS/Windows have their own media integrations below).
@@ -936,7 +952,7 @@ class YTMPlayerApp(
                 return False
             return True
 
-        await _step("save session", self._save_session_state)
+        await _step("save session", lambda: self._save_session_state(force=True))
 
         # A reference is dropped only once its resource actually closed.
         if self._ipc_server and await _step("stop IPC server", self._ipc_server.stop):

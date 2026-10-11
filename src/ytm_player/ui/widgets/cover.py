@@ -37,6 +37,7 @@ THUMB_DIR = CACHE_DIR.parent / "covers"  # CACHE_DIR is the audio cache
 _TIMEOUT = 8
 _FIRST_PAINT_DELAY = 0.12  # seconds: the page lays out and paints its text first
 _IMAGE_GAP = 0.03  # seconds between kitty images, about two frames
+_STALE_PART_SECONDS = 3600  # a temp file this old belongs to a killed download
 _PLACEHOLDER = "♫"
 # Corner radius of a cover, as a share of its shorter side.
 CORNER_RATIO = 0.06
@@ -182,6 +183,7 @@ def fetch_thumbnail(url: str) -> Path | None:
     """Download *url* into the cover cache once. Blocking. Run it in a thread."""
     path = cached_path(url)
     if path.exists() and path.stat().st_size > 0:
+        _touch(path)
         return path
     try:
         THUMB_DIR.mkdir(parents=True, exist_ok=True)
@@ -197,6 +199,57 @@ def fetch_thumbnail(url: str) -> Path | None:
         return None
 
 
+def _touch(path: Path) -> None:
+    """Mark a cached cover as just used, so the size cap removes it last."""
+    try:
+        path.touch()
+    except OSError:
+        pass
+
+
+def prune_covers(max_mb: int, now: float | None = None) -> int:
+    """Remove the least recently used covers until the cache fits *max_mb*.
+
+    Blocking. Run it in a thread. Also removes temp files left by a killed
+    download. Returns the number of files removed.
+    """
+    now = time.time() if now is None else now
+    entries: list[tuple[float, int, Path]] = []
+    removed = 0
+    try:
+        candidates = list(THUMB_DIR.iterdir())
+    except OSError:
+        return 0
+    for path in candidates:
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        if path.suffix == ".part":
+            # A download in progress renames its temp file within seconds.
+            if now - stat.st_mtime > _STALE_PART_SECONDS:
+                removed += _unlink(path)
+            continue
+        entries.append((stat.st_mtime, stat.st_size, path))
+    total = sum(size for _mtime, size, _path in entries)
+    limit = max(0, max_mb) * 1024 * 1024
+    for _mtime, size, path in sorted(entries):
+        if total <= limit:
+            break
+        if _unlink(path):
+            removed += 1
+            total -= size
+    return removed
+
+
+def _unlink(path: Path) -> int:
+    try:
+        path.unlink()
+        return 1
+    except OSError:
+        return 0
+
+
 def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
     """A copy of *path* sized for *cols* x *rows* terminal cells, cached beside it.
 
@@ -210,7 +263,9 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
         cell = get_cell_size()
         width, height = max(1, cols) * cell.width, max(1, rows) * cell.height
         target = path.with_name(f"{path.stem}.{width}x{height}.r2.png")
-        if not target.exists():
+        if target.exists():
+            _touch(target)
+        else:
             with Image.open(path) as image:
                 image = image.convert("RGB")
                 if image.size == _VIDEO_THUMB_SIZE:

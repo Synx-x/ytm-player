@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+from pathlib import Path
 
 from ytm_player.app._base import YTMHostBase
 from ytm_player.services.queue import RepeatMode
@@ -15,6 +17,51 @@ logger = logging.getLogger(__name__)
 _SESSION_SCHEMA_VERSION = 1
 # Seconds between session saves while the app runs.
 SESSION_AUTOSAVE_SECONDS = 5
+_MISSING = object()
+
+
+def _resume_file() -> Path:
+    """resume.json, beside session.json wherever that file lives."""
+    from ytm_player.config.paths import SESSION_STATE_FILE
+
+    return SESSION_STATE_FILE.with_name("resume.json")
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    """Write *text* to a temp file, then rename it over *path*."""
+    from ytm_player.config.paths import SECURE_FILE_MODE, secure_chmod
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp_path.write_text(text, encoding="utf-8")
+        secure_chmod(tmp_path, SECURE_FILE_MODE)
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+
+def _load_resume_state() -> object:
+    """The resume point saved in resume.json, which may be None.
+
+    Returns ``_MISSING`` when the file is absent or unusable. The caller then
+    falls back to the ``resume`` key of an older session.json.
+    """
+    try:
+        state = json.loads(_resume_file().read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _MISSING
+    except Exception:
+        logger.debug("Could not read resume state", exc_info=True)
+        return _MISSING
+    if not isinstance(state, dict) or state.get("schema_version") != _SESSION_SCHEMA_VERSION:
+        return _MISSING
+    resume = state.get("resume")
+    return resume if resume is None or isinstance(resume, dict) else _MISSING
 
 
 class SessionMixin(YTMHostBase):
@@ -60,6 +107,10 @@ class SessionMixin(YTMHostBase):
         fails part-way can't overwrite the previous session.
         """
         state = self._load_session_state()
+        # resume.json supersedes the resume key that older versions kept in session.json.
+        saved_resume = _load_resume_state()
+        if saved_resume is not _MISSING:
+            state["resume"] = saved_resume
 
         # The resume point read from disk stays valid until a track's load
         # is accepted this session (play_track clears it). Until then
@@ -211,14 +262,17 @@ class SessionMixin(YTMHostBase):
         """
         self.set_interval(SESSION_AUTOSAVE_SECONDS, self._save_session_state)
 
-    def _save_session_state(self) -> None:
-        """Persist volume, shuffle, repeat, queue and resume point to disk."""
+    def _save_session_state(self, force: bool = False) -> None:
+        """Persist volume, shuffle, repeat, queue and resume point to disk.
+
+        The resume point goes to its own small file, rewritten each autosave.
+        session.json holds the queue and is rewritten only when it changes.
+        *force* compares the full encoding instead of the cheap signature.
+        """
         from ytm_player.config.paths import SESSION_STATE_FILE
 
         if not self._session_restored:
-            # Nothing in memory is authoritative yet (startup failed before
-            # the restore, or the restore itself raised): the file on disk
-            # is the user's real state — leave it alone.
+            # The restore never finished, so the file on disk is the user's real state.
             logger.warning("Session was never restored this run — not overwriting session.json")
             return
 
@@ -251,15 +305,13 @@ class SessionMixin(YTMHostBase):
         if resume is None and self._loaded_resume is not None:
             resume = self._loaded_resume
 
-        state = {
+        settings_part = {
             "schema_version": _SESSION_SCHEMA_VERSION,
             "volume": volume,
             "repeat": self.queue.repeat_mode.value,
             "shuffle": self.queue.shuffle_enabled,
-            "queue_tracks": queue_tracks,
             "queue_index": queue_index,
             "queue_context_id": self.queue.current_context_id,
-            "resume": resume,
             "sidebar_per_page": self._sidebar_per_page,
             "transliteration_enabled": self._get_transliteration_state(),
             "first_run_hint_shown": self._first_run_hint_shown,
@@ -268,27 +320,25 @@ class SessionMixin(YTMHostBase):
             "album_art": self._album_art_shown(),
         }
         try:
-            # Autosave runs every few seconds: skip the write when nothing changed.
-            encoded = json.dumps(state)
-            if encoded == getattr(self, "_last_saved_session", None):
-                return
-            import os
+            # The queue is a few hundred kB. Encode it only when the small
+            # fields or the track order differ from the last write.
+            signature = (
+                json.dumps(settings_part),
+                tuple(t.get("video_id") for t in queue_tracks),
+            )
+            if force or signature != getattr(self, "_last_session_signature", None):
+                encoded = json.dumps({**settings_part, "queue_tracks": queue_tracks})
+                if encoded != getattr(self, "_last_saved_session", None):
+                    _write_atomic(SESSION_STATE_FILE, encoded)
+                    self._last_saved_session = encoded
+                self._last_session_signature = signature
 
-            from ytm_player.config.paths import SECURE_FILE_MODE, secure_chmod
-
-            SESSION_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = SESSION_STATE_FILE.with_suffix(SESSION_STATE_FILE.suffix + ".tmp")
-            try:
-                tmp_path.write_text(encoded, encoding="utf-8")
-                secure_chmod(tmp_path, SECURE_FILE_MODE)
-                os.replace(tmp_path, SESSION_STATE_FILE)
-                self._last_saved_session = encoded
-            finally:
-                if tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except OSError:
-                        pass
+            encoded_resume = json.dumps(
+                {"schema_version": _SESSION_SCHEMA_VERSION, "resume": resume}
+            )
+            if encoded_resume != getattr(self, "_last_saved_resume", None):
+                _write_atomic(_resume_file(), encoded_resume)
+                self._last_saved_resume = encoded_resume
         except (OSError, TypeError):
             logger.exception("Could not save session state")
             if getattr(self, "_session_save_warned", False):

@@ -77,6 +77,8 @@ class SearchSettings:
 class CacheSettings:
     enabled: bool = True
     max_size_mb: int = 1024
+    # Size cap for downloaded cover images. The least recently shown go first.
+    covers_max_mb: int = 150
     prefetch_next: bool = True
     location: str = ""
 
