@@ -137,8 +137,10 @@ DEFAULT_BINDINGS: dict[str, list[str]] = {
     "focus_pane_left": ["C-w h"],
     "focus_pane_right": ["C-w l"],
     "focus_pane_cycle": ["C-w w"],
-    "go_back": ["backspace"],
-    "go_forward": ["S-backspace"],
+    # Alt+Left and Alt+Right as in a browser. kitty sends Shift+Backspace as a
+    # plain Backspace, so Alt+Right is the forward key that always arrives.
+    "go_back": ["backspace", "M-left"],
+    "go_forward": ["S-backspace", "M-right"],
     "quit": ["q", "C-q"],
     # Pages
     "home": ["g h"],

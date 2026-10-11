@@ -14,6 +14,8 @@ from ytm_player.ui.sidebars.playlist_sidebar import PlaylistSidebar
 
 logger = logging.getLogger(__name__)
 
+# Actions an Alt chord still runs while a text box has focus, as in a browser.
+_NAV_IN_TEXT = (Action.GO_BACK, Action.GO_FORWARD)
 _MAX_KEY_COUNT = 1000
 
 # Actions the Playlists sidebar can handle when it holds keyboard focus
@@ -65,6 +67,16 @@ class KeyHandlingMixin(YTMHostBase):
 
         focused = self.focused
         if isinstance(focused, (Input, TextArea)):
+            # Back and forward still work from a text box, by their Alt
+            # chords. Any other key, Backspace included, belongs to the text.
+            if event.key.startswith("alt+"):
+                result, action = self.keymap.match((self._normalize_key(event),))
+                if result == MatchResult.EXACT and action in _NAV_IN_TEXT:
+                    event.prevent_default()
+                    event.stop()
+                    self._key_buffer.clear()
+                    self._count_buffer = ""
+                    await self._handle_action(action, 1)
             return
 
         key = self._normalize_key(event)
