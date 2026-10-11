@@ -1,4 +1,10 @@
-"""Search page — query YouTube Music and display categorized results."""
+"""Search page — query YouTube Music and display categorized results.
+
+Under the search box sit the web app's filter chips: All, Songs, Albums,
+Artists and Community playlists. All shows the top result, songs and one shelf
+per category. Any other chip shows only that category and fetches more of it,
+songs as a full-width list and the rest as a grid of cover cards.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, ItemGrid, Vertical, VerticalScroll
 from textual.events import Click
 from textual.message import Message
 from textual.reactive import reactive
@@ -18,7 +24,14 @@ from textual.widgets import Input, Label, ListItem, ListView, Static
 from ytm_player.config.keymap import Action
 from ytm_player.config.settings import get_settings
 from ytm_player.ui.icons import icon
-from ytm_player.ui.pages.home import Shelf, card_subtitle, navigate_browse_item, relayout_soon
+from ytm_player.ui.pages.home import (
+    CARD_WIDTH,
+    HomeCard,
+    Shelf,
+    card_subtitle,
+    navigate_browse_item,
+    relayout_soon,
+)
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.cover import Cover, best_thumbnail
 from ytm_player.ui.widgets.track_table import TrackTable
@@ -268,6 +281,39 @@ class SuggestionList(Widget):
 # ---------------------------------------------------------------------------
 
 # Shelf title and the panel id its right-click menu maps to, per category.
+# The filter chips, as the web app labels them, in its order.
+FILTER_CHIPS = (("all", "All"), ("songs", "Songs"), ("albums", "Albums"),
+                ("artists", "Artists"), ("playlists", "Community playlists"))  # fmt: skip
+# Results a chip other than All fetches for its category.
+FILTERED_LIMIT = 40
+
+
+class SearchChips(Horizontal):
+    """All, Songs, Albums, Artists, Community playlists. The active chip is filled."""
+
+    DEFAULT_CSS = """
+    SearchChips { height: 2; padding: 0 1; display: none; }
+    SearchChips.visible { display: block; }
+    SearchChips > .search-chip { width: auto; height: 1; padding: 0 2; margin-right: 1;
+        background: $boost; }
+    SearchChips > .search-chip:hover { background: $primary 30%; }
+    SearchChips > .search-chip.-active { background: $foreground; color: $background; }
+    """
+
+    def compose(self) -> ComposeResult:
+        for key, label in FILTER_CHIPS:
+            yield Static(label, id=f"chip-{key}", classes="search-chip")
+
+    def on_click(self, event: Click) -> None:
+        widget = event.widget
+        if widget is None or not (widget.id or "").startswith("chip-") or event.button != 1:
+            return
+        event.stop()
+        page = next((a for a in self.ancestors if isinstance(a, SearchPage)), None)
+        if page is not None:
+            page.show_filter((widget.id or "").removeprefix("chip-"))
+
+
 _SHELVES = (
     ("albums", "Albums", "albums-panel"),
     ("artists", "Artists", "artists-panel"),
@@ -353,6 +399,7 @@ class TopResult(Horizontal, can_focus=True):
 # ---------------------------------------------------------------------------
 # Search page
 # ---------------------------------------------------------------------------
+
 
 class SearchPage(Widget):
     """Full search page with input, suggestions, and categorized result panels.
@@ -453,6 +500,30 @@ class SearchPage(Widget):
         border: solid $accent;
     }
 
+    #search-filtered {
+        display: none;
+        height: auto;
+        padding: 0 1;
+    }
+
+    SearchPage.-only-songs #top-result-box,
+    SearchPage.-only-songs #search-shelves {
+        display: none;
+    }
+
+    SearchPage.-only-songs #search-top {
+        height: 80vh;
+    }
+
+    SearchPage.-only-cards #search-top,
+    SearchPage.-only-cards #search-shelves {
+        display: none;
+    }
+
+    SearchPage.-only-cards #search-filtered {
+        display: block;
+    }
+
     """
 
     search_mode: reactive[str] = reactive("music")
@@ -493,6 +564,9 @@ class SearchPage(Widget):
             "playlists": [],
             "top": [],
         }
+        self.search_filter = "all"
+        # More results per (query, chip), fetched the first time a chip is picked.
+        self._filtered_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
         # State restoration from navigation.
         self._restore_query = last_query
         self._restore_mode = search_mode
@@ -511,6 +585,7 @@ class SearchPage(Widget):
                 yield Static(f"[{mode_color}]▶[/{mode_color}] Music", id="search-mode")
             yield SuggestionList(id="suggestion-overlay")
             yield Static("", id="loading-msg", classes="loading-indicator")
+            yield SearchChips(id="search-chips")
             with VerticalScroll(id="search-results"):
                 with Horizontal(id="search-top"):
                     with Vertical(id="top-result-box"):
@@ -523,6 +598,7 @@ class SearchPage(Widget):
                             id="songs-table",
                         )
                 yield Vertical(id="search-shelves")
+                yield ItemGrid(id="search-filtered", min_column_width=CARD_WIDTH)
             # The text panels stay for their keyboard and menu handlers. The
             # shelves above show the same results as cover cards, as on the web.
             for name, pid in (("Albums", "albums"), ("Artists", "artists"),
@@ -921,8 +997,65 @@ class SearchPage(Widget):
     # Populate UI
     # ------------------------------------------------------------------
 
+    def show_filter(self, key: str) -> None:
+        """Show the results of chip *key*: "all" or one category."""
+        if key not in dict(FILTER_CHIPS):
+            return
+        self._mark_filter(key)
+        if key == "all":
+            self.query_one("#songs-table", TrackTable).load_tracks(
+                normalize_tracks(self._search_results.get("songs", []))
+            )
+            return
+        self.run_worker(
+            self._load_filtered(self._last_query, key), group="search-filter", exclusive=True
+        )
+
+    def _mark_filter(self, key: str) -> None:
+        """Light chip *key* and lay the page out for it."""
+        self.search_filter = key
+        for chip_key, _label in FILTER_CHIPS:
+            self.query_one(f"#chip-{chip_key}").set_class(chip_key == key, "-active")
+        self.set_class(key == "songs", "-only-songs")
+        self.set_class(key not in ("all", "songs"), "-only-cards")
+
+    async def _load_filtered(self, query: str, key: str) -> None:
+        """Fetch more results of one category, then show them."""
+        if not query:
+            return
+        items = self._filtered_cache.get((query, key))
+        if items is None:
+            ytmusic = cast("YTMHostBase", self.app).ytmusic
+            api_filter = self._MUSIC_FILTERS[key]
+            try:
+                items = (
+                    await ytmusic.search(query, filter=api_filter, limit=FILTERED_LIMIT)
+                    if ytmusic
+                    else []
+                )
+            except Exception:
+                logger.exception("Filtered search failed for %r (%s)", query, key)
+                items = []
+            items = items or self._search_results.get(key, [])
+            self._filtered_cache[(query, key)] = items
+        if self.search_filter != key or self._last_query != query:
+            return
+        if key == "songs":
+            self.query_one("#songs-table", TrackTable).load_tracks(normalize_tracks(items))
+            return
+        grid = self.query_one("#search-filtered", ItemGrid)
+        await grid.remove_children()
+        if items:
+            await grid.mount(*[HomeCard(as_card(item)) for item in items])
+            relayout_soon(self)
+
     def _populate_results(self, results: dict[str, list[dict[str, Any]]]) -> None:
         """Push result data into each panel widget."""
+        # A new search starts on the All chip. The chips show once there is something to filter.
+        self._mark_filter("all")
+        self.query_one("#search-chips", SearchChips).set_class(
+            any(results.get(k) for k, _label in FILTER_CHIPS if k != "all"), "visible"
+        )
         # Songs go into the TrackTable.
         songs_table = self.query_one("#songs-table", TrackTable)
         songs_table.load_tracks(normalize_tracks(results.get("songs", [])))

@@ -144,3 +144,49 @@ async def test_right_click_on_a_card_opens_its_actions_menu_not_the_item():
 
 async def test_song_thumbnails_ask_for_a_larger_copy():
     assert cover.best_thumbnail(SONG).endswith("=w226-h226-l90-rj")
+
+
+async def test_filter_chips_show_after_a_search_and_start_on_all():
+    app = _Host(TOP_ARTIST)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _search(pilot)
+        chips = [str(c.render()) for c in app.query(".search-chip")]
+        assert chips == ["All", "Songs", "Albums", "Artists", "Community playlists"]
+        assert app.query_one("#search-chips").has_class("visible")
+        assert app.query_one("#chip-all").has_class("-active")
+        page = app.query_one(SearchPage)
+        assert not page.has_class("-only-songs") and not page.has_class("-only-cards")
+
+
+async def test_the_albums_chip_shows_only_albums_and_fetches_more():
+    app = _Host(TOP_ARTIST)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _search(pilot)
+        app.ytmusic.search.reset_mock()
+        await pilot.click("#chip-albums")
+        for _ in range(10):
+            await pilot.pause()
+        page = app.query_one(SearchPage)
+        assert page.has_class("-only-cards") and page.search_filter == "albums"
+        assert not app.query_one("#search-top").display or not app.query_one(
+            "#search-top"
+        ).region.height
+        grid = app.query_one("#search-filtered")
+        assert [str(c.query_one(".card-title").render()) for c in grid.query(HomeCard)] == ["INSANO"]
+        app.ytmusic.search.assert_awaited_once_with("kid cudi", filter="albums", limit=40)
+
+
+async def test_the_songs_chip_lists_songs_full_width_then_all_restores_the_page():
+    app = _Host(TOP_ARTIST)
+    async with app.run_test(size=(160, 50)) as pilot:
+        await _search(pilot)
+        await pilot.click("#chip-songs")
+        for _ in range(10):
+            await pilot.pause()
+        page = app.query_one(SearchPage)
+        assert page.has_class("-only-songs")
+        assert not app.query_one("#top-result-box").region.height
+        await pilot.click("#chip-all")
+        await pilot.pause()
+        assert not page.has_class("-only-songs") and not page.has_class("-only-cards")
+        assert app.query(TopResult)
