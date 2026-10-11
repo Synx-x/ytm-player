@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, cast
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.events import Click
@@ -18,6 +19,7 @@ from textual.widget import Widget
 from textual.widgets import Label
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.cover import Cover, track_thumbnail
 from ytm_player.utils.formatting import extract_artist, format_duration
 
@@ -43,6 +45,39 @@ def _cover_url(track: dict[str, Any] | None) -> str:
 _UP_NEXT_ROWS = 60
 
 
+# Columns the duration takes at the right of a row.
+_TIME_COLUMNS = 7
+
+
+class UpNextText(Widget):
+    """Title over artist, with the duration at the right of the title line.
+
+    One widget draws all three. A scroll step repaints every visible widget,
+    so a row of three widgets costs about half of the six it used to be.
+    """
+
+    DEFAULT_CSS = """
+    UpNextText { width: 1fr; height: 2; }
+    """
+
+    def __init__(self, title: str, artist: str, duration: str, current: bool) -> None:
+        super().__init__()
+        self.title = title
+        self.artist = artist
+        self.duration = duration
+        self.current = current
+
+    def render(self) -> Text:
+        theme = get_theme()
+        text_width = max(0, self.size.width - _TIME_COLUMNS)
+        title = Text(self.title, style=theme.primary if self.current else theme.foreground)
+        title.truncate(text_width, overflow="ellipsis", pad=True)
+        artist = Text(self.artist, style=theme.muted_text)
+        artist.truncate(text_width, overflow="ellipsis")
+        time = Text(self.duration.rjust(_TIME_COLUMNS), style=theme.muted_text)
+        return Text.assemble(title, time, "\n", artist, no_wrap=True)
+
+
 class UpNextRow(Horizontal):
     """One queue entry as the web lists it: small cover, title over artist, duration on the right."""
 
@@ -50,25 +85,23 @@ class UpNextRow(Horizontal):
     UpNextRow { height: 3; padding: 0 1; margin: 0 2 0 1; border-bottom: solid $border; }
     UpNextRow:hover { background: $boost; }
     UpNextRow > Cover { width: 4; height: 2; margin-right: 2; }
-    UpNextRow .un-text { width: 1fr; height: 2; }
-    UpNextRow .un-title { text-style: bold; text-wrap: nowrap; text-overflow: ellipsis; }
-    UpNextRow .un-artist { color: $text-muted; text-wrap: nowrap; text-overflow: ellipsis; }
-    UpNextRow .un-time { width: 7; height: 2; content-align: right middle; color: $text-muted; }
-    UpNextRow.-current .un-title { color: $primary; }
     """
 
     def __init__(self, track: dict[str, Any], index: int, current: bool) -> None:
         super().__init__(classes="-current" if current else "")
         self.track = track
         self.index = index
+        self.current = current
 
     def compose(self) -> ComposeResult:
         yield Cover(track_thumbnail(self.track))
-        with Vertical(classes="un-text"):
-            yield Label(self.track.get("title") or "", classes="un-title")
-            yield Label(extract_artist(self.track) or "", classes="un-artist")
         duration = self.track.get("duration")
-        yield Label(format_duration(int(duration)) if duration else "", classes="un-time")
+        yield UpNextText(
+            self.track.get("title") or "",
+            extract_artist(self.track) or "",
+            format_duration(int(duration)) if duration else "",
+            self.current,
+        )
 
     def on_click(self, event: Click) -> None:
         if event.button != 1:

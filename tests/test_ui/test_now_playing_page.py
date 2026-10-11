@@ -10,7 +10,7 @@ from textual.app import App, ComposeResult
 
 from ytm_player.services.queue import QueueManager
 from ytm_player.ui import playback_bar
-from ytm_player.ui.pages.now_playing import NowPlayingPage, UpNextRow
+from ytm_player.ui.pages.now_playing import NowPlayingPage, UpNextRow, UpNextText
 from ytm_player.ui.playback_bar import PlaybackBar
 from ytm_player.ui.widgets import cover
 from ytm_player.ui.widgets.cover import Cover
@@ -35,7 +35,9 @@ class _Host(App):
         super().__init__()
         self.page = page
         self.queue = QueueManager()
-        self.queue.add_multiple([_track("a", "BLUE SKY"), _track("b", "Opiate"), _track("c", "Ladders")])
+        self.queue.add_multiple(
+            [_track("a", "BLUE SKY"), _track("b", "Opiate"), _track("c", "Ladders")]
+        )
         self.player = _FakePlayer()
         self.player.current_track = self.queue.tracks[0]
         self.navigate_to = AsyncMock()
@@ -69,7 +71,7 @@ async def test_the_view_shows_the_playing_track_large_beside_up_next():
         big = app.query_one("#np-cover", Cover)
         assert big.url.endswith("=w544-h544-l90-rj") and big.size == (60, 30)
         rows = list(app.query(UpNextRow))
-        assert [str(r.query_one(".un-title").render()) for r in rows] == ["BLUE SKY", "Opiate", "Ladders"]
+        assert [r.query_one(UpNextText).title for r in rows] == ["BLUE SKY", "Opiate", "Ladders"]
         assert rows[0].has_class("-current") and not rows[1].has_class("-current")
 
 
@@ -82,7 +84,9 @@ async def test_the_view_follows_a_track_change():
         assert str(app.query_one("#np-title").render()) == "Opiate"
 
 
-@pytest.mark.parametrize(("current", "expected"), [("home", "now_playing"), ("now_playing", "back")])
+@pytest.mark.parametrize(
+    ("current", "expected"), [("home", "now_playing"), ("now_playing", "back")]
+)
 async def test_clicking_the_bar_title_opens_the_view_and_clicking_again_goes_back(
     monkeypatch, current: str, expected: str
 ):
@@ -124,8 +128,9 @@ async def test_an_up_next_row_shows_cover_title_artist_and_duration():
         await pilot.pause(0.2)
         row = app.query(UpNextRow).first()
         assert row.query_one("Cover").size == (4, 2)
-        assert str(row.query_one(".un-artist").render()) == "Kid Cudi"
-        assert str(row.query_one(".un-time").render()) == "2:00"
+        title_line, artist_line = str(row.query_one(UpNextText).render()).split("\n")
+        assert title_line.startswith("BLUE SKY") and title_line.endswith("   2:00")
+        assert artist_line.startswith("Kid Cudi")
         assert row.outer_size.height == 3, "two lines and a divider"
 
 
@@ -144,9 +149,8 @@ async def test_clicking_an_up_next_row_plays_it():
 
 
 async def test_up_next_has_no_scroll_bar_so_its_dividers_float():
-    from ytm_player.ui.pages.now_playing import UpNextList
-
     from ytm_player.app._app import YTMPlayerApp
+    from ytm_player.ui.pages.now_playing import UpNextList
 
     class _AppCssHost(_Host):
         CSS = YTMPlayerApp.CSS  # its * rule is what overrode the list before
