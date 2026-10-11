@@ -51,6 +51,7 @@ from ytm_player.services.queue import QueueManager
 from ytm_player.services.shuffle_prefs import ShufflePreferences
 from ytm_player.services.stream import StreamResolver
 from ytm_player.services.ytmusic import YTMusicService
+from ytm_player.ui.autohide_scrollbars import AutoHideScrollbarsMixin
 from ytm_player.ui.header_bar import HeaderBar
 from ytm_player.ui.playback_bar import PlaybackBar
 from ytm_player.ui.regular_weight import RegularWeightMixin
@@ -122,6 +123,7 @@ class YTMPlayerApp(
     MPRISMixin,
     IPCMixin,
     RegularWeightMixin,
+    AutoHideScrollbarsMixin,
     App,
 ):
     """The main ytm-player Textual application.
@@ -154,15 +156,22 @@ class YTMPlayerApp(
     }
 
     /* Thin scroll bars everywhere: one cell wide (about 9 px in kitty), grey
-       on black. Horizontal bars are drawn thin by ThinScrollBarRender. */
+       on black. Horizontal bars are drawn thin by ThinScrollBarRender.
+       The thumb is hidden, drawn in the background colour, until the pointer
+       is over its list (AutoHideScrollbarsMixin) or it is being dragged. */
     * {
         scrollbar-size-vertical: 1;
         scrollbar-background: $background;
         scrollbar-background-hover: $background;
         scrollbar-background-active: $background;
+        scrollbar-color: $background;
+        scrollbar-color-hover: $background;
+        scrollbar-color-active: $primary;
+    }
+
+    .-scroll-hover {
         scrollbar-color: #2e2e2e;
         scrollbar-color-hover: #4a4a4a;
-        scrollbar-color-active: $primary;
     }
 
     ToastRack {
