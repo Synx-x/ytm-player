@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 from rich.cells import cell_len
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal
 from textual.events import Click, MouseScrollDown, MouseScrollUp
 from textual.message import Message
 from textual.reactive import reactive
@@ -108,8 +108,10 @@ class _TrackInfo(Widget):
         selection = self.selection.strip()
         if not selection or (self.title and selection.startswith(self.title)):
             return
-        used = result.cell_len if "\n" not in result.plain else cell_len(
-            result.plain.split("\n", 1)[1]
+        used = (
+            result.cell_len
+            if "\n" not in result.plain
+            else cell_len(result.plain.split("\n", 1)[1])
         )
         room = self.size.width - used - 5
         if room < _MIN_SELECTION_ROOM:
@@ -264,17 +266,21 @@ class _ShuffleButton(Widget):
 # based on like state (filled accent when liked, muted when not).
 
 
-class _HeartButton(Widget):
-    """Like-state indicator and click-toggle for the currently-playing track."""
+class _RateButton(Widget):
+    """Thumbs up or down for the playing track, as on the web app.
+
+    Thumbs up adds the track to Liked songs. Thumbs down dislikes it and skips
+    to the next track. A second click clears the rating.
+    """
 
     DEFAULT_CSS = """
-    _HeartButton {
+    _RateButton {
         height: 1;
         width: 3;
         margin: 0 1;
         content-align: center middle;
     }
-    _HeartButton:hover {
+    _RateButton:hover {
         background: $accent 30%;
     }
     """
@@ -282,20 +288,50 @@ class _HeartButton(Widget):
     # likeStatus value: "LIKE", "DISLIKE", "INDIFFERENT", or "" (unknown).
     like_status: reactive[str] = reactive("")
 
+    def __init__(self, rating: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._rating = rating
+        self._icon = "thumb_up" if rating == "LIKE" else "thumb_down"
+
     def render(self) -> Text:
         theme = get_theme()
-        if self.like_status == "LIKE":
-            return Text(f" {icon('heart')} ", style=f"bold {theme.primary}")
-        return Text(f" {icon('heart_off')} ", style=theme.muted_text)
+        if self.like_status == self._rating:
+            return Text(f" {icon(self._icon)} ", style=theme.primary)
+        return Text(f" {icon(self._icon + '_off')} ", style=theme.muted_text)
 
     def on_click(self, event: Click) -> None:
-        """Click toggles like via the app's _toggle_like_current."""
         event.stop()
         app = cast("YTMHostBase", self.app)
         try:
-            self.run_worker(app._toggle_like_current(), group="toggle-like", exclusive=True)
+            self.run_worker(app._rate_current(self._rating), group="rate", exclusive=True)
         except Exception:
-            logger.debug("Failed to toggle like from heart click", exc_info=True)
+            logger.debug("Failed to rate from the player bar", exc_info=True)
+
+
+class _BarIconButton(Widget):
+    """A one-icon button in the player bar."""
+
+    DEFAULT_CSS = """
+    _BarIconButton {
+        height: 1;
+        width: 3;
+        content-align: center middle;
+        color: $text-muted;
+    }
+    _BarIconButton:hover {
+        background: $accent 30%;
+        color: $text;
+    }
+    """
+
+    glyph: reactive[str] = reactive("")
+
+    def __init__(self, glyph: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.glyph = glyph
+
+    def render(self) -> Text:
+        return Text(f" {self.glyph} ")
 
 
 # ── Main playback bar ─────────────────────────────────────────────
@@ -383,8 +419,11 @@ class PlaybackBar(Widget):
     PlaybackBar #pb-right > * {
         margin-left: 2;
     }
-    PlaybackBar #pb-heart {
+    PlaybackBar #pb-dislike {
         margin: 0 0 0 2;
+    }
+    PlaybackBar #pb-heart, PlaybackBar #pb-more {
+        margin: 0 0 0 1;
     }
     PlaybackBar #pb-time {
         width: auto;
@@ -414,7 +453,8 @@ class PlaybackBar(Widget):
     }
     /* Like, volume, repeat and shuffle sit on the same middle row as the
        play button, the time and the title. */
-    PlaybackBar #pb-heart, PlaybackBar #pb-right > * {
+    PlaybackBar #pb-heart, PlaybackBar #pb-dislike, PlaybackBar #pb-more,
+    PlaybackBar #pb-right > * {
         height: 3;
         content-align: center middle;
     }
@@ -447,23 +487,35 @@ class PlaybackBar(Widget):
                     art.display = False
                 yield art
                 yield _TrackInfo(id="pb-track-info")
-                yield _HeartButton(id="pb-heart")
+                yield _RateButton("DISLIKE", id="pb-dislike")
+                yield _RateButton("LIKE", id="pb-heart")
+                yield _BarIconButton(icon("more"), id="pb-more")
             with Horizontal(id="pb-right"):
                 yield _VolumeDisplay(id="pb-volume")
                 yield _RepeatButton(id="pb-repeat")
                 yield _ShuffleButton(id="pb-shuffle")
+                yield _BarIconButton(icon("expand"), id="pb-expand")
 
     def on_click(self, event: Click) -> None:
         """A left click on the cover or title opens the now-playing view. A right-click opens track actions."""
         if event.button == 1:
             target = event.widget
             ids = {w.id for w in (target.ancestors_with_self if target else [])}
-            if ids & {"pb-art", "pb-track-info"}:
+            if "pb-more" in ids:
+                # The web app's ⋮ menu: the same actions as a right-click.
+                event.stop()
+                self._post_track_actions()
+                return
+            if ids & {"pb-art", "pb-track-info", "pb-expand"}:
                 event.stop()
                 self.app.run_worker(self._toggle_now_playing(), group="now-playing", exclusive=True)
             return
         if event.button != 3:
             return
+        self._post_track_actions()
+
+    def _post_track_actions(self) -> None:
+        """Ask for the track actions popup of the playing track."""
         app = cast("YTMHostBase", self.app)
         track = None
         if app.player is not None and app.player.current_track:
@@ -552,17 +604,22 @@ class PlaybackBar(Widget):
             logger.debug("Failed to refresh shuffle lock state", exc_info=True)
 
     def update_like_status(self, status: str | None) -> None:
-        """Update the heart icon based on the track's likeStatus.
+        """Show the track's likeStatus on the thumbs.
 
         Accepts 'LIKE', 'DISLIKE', 'INDIFFERENT', None, or an unknown
-        string. Anything other than 'LIKE' shows the muted (not-liked)
-        state.
+        string. Each thumb is lit only for its own rating.
         """
+        for button in self.query(_RateButton):
+            button.like_status = (status or "").upper()
+
+    def set_now_playing_open(self, is_open: bool) -> None:
+        """Point the expand button down while the now-playing view is open, up otherwise."""
         try:
-            heart = self.query_one("#pb-heart", _HeartButton)
-            heart.like_status = (status or "").upper()
+            self.query_one("#pb-expand", _BarIconButton).glyph = icon(
+                "collapse" if is_open else "expand"
+            )
         except Exception:
-            logger.debug("Failed to update heart like_status display", exc_info=True)
+            logger.debug("Expand button not ready", exc_info=True)
 
 
 # ── Interactive footer bar ────────────────────────────────────────

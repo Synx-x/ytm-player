@@ -211,6 +211,15 @@ class NavigationMixin(YTMHostBase):
         except Exception:
             logger.exception("Failed to update header back/forward button visibility")
 
+        try:
+            from ytm_player.ui.playback_bar import PlaybackBar
+
+            self.query_one("#playback-bar", PlaybackBar).set_now_playing_open(
+                page_name == "now_playing"
+            )
+        except Exception:
+            logger.debug("Failed to update the player bar's expand button", exc_info=True)
+
         # Apply per-page playlist sidebar visibility.
         sidebar_visible = self._sidebar_per_page.get(page_name, self._sidebar_default)
         self._apply_playlist_sidebar(sidebar_visible)
@@ -262,8 +271,8 @@ class NavigationMixin(YTMHostBase):
         from ytm_player.ui.pages.help import HelpPage
         from ytm_player.ui.pages.home import HomePage
         from ytm_player.ui.pages.library import LibraryPage
-        from ytm_player.ui.pages.now_playing import NowPlayingPage
         from ytm_player.ui.pages.liked_songs import LikedSongsPage
+        from ytm_player.ui.pages.now_playing import NowPlayingPage
         from ytm_player.ui.pages.queue import QueuePage
         from ytm_player.ui.pages.recently_played import RecentlyPlayedPage
         from ytm_player.ui.pages.search import SearchPage

@@ -71,17 +71,38 @@ async def test_clicking_shuffle_toggles_it():
         assert not app.queue.shuffle_enabled
 
 
-async def test_heart_click_and_like_state():
+async def test_thumbs_click_and_like_state():
     app = _Host()
+    app._rate_current = AsyncMock()
     async with app.run_test(size=(140, 12)) as pilot:
-        assert NERD["heart_off"] in _text(app, "#pb-heart")
+        assert NERD["thumb_up_off"] in _text(app, "#pb-heart")
+        assert NERD["thumb_down_off"] in _text(app, "#pb-dislike")
         await pilot.click("#pb-heart")
         for _ in range(3):
             await pilot.pause()
-        app._toggle_like_current.assert_awaited()
+        app._rate_current.assert_awaited_with("LIKE")
         app.query_one(PlaybackBar).update_like_status("LIKE")
         await pilot.pause()
-        assert NERD["heart"] in _text(app, "#pb-heart")
+        assert NERD["thumb_up"] in _text(app, "#pb-heart")
+        assert NERD["thumb_down_off"] in _text(app, "#pb-dislike")
+        app.query_one(PlaybackBar).update_like_status("DISLIKE")
+        await pilot.pause()
+        assert NERD["thumb_up_off"] in _text(app, "#pb-heart")
+        assert NERD["thumb_down"] in _text(app, "#pb-dislike")
+
+
+async def test_expand_opens_now_playing_and_flips_when_open():
+    app = _Host()
+    async with app.run_test(size=(140, 12)) as pilot:
+        bar = app.query_one(PlaybackBar)
+        app.navigate_to = AsyncMock()
+        app._current_page = "home"
+        await pilot.click("#pb-expand")
+        for _ in range(3):
+            await pilot.pause()
+        app.navigate_to.assert_awaited_with("now_playing")
+        bar.set_now_playing_open(True)
+        assert NERD["collapse"] in _text(app, "#pb-expand")
 
 
 @pytest.mark.parametrize(

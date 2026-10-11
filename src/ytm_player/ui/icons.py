@@ -60,6 +60,14 @@ _NERD: dict[str, str] = {
     "new_releases": "\U000f0394",  # nf-md-new_box
     "charts": "\U000f0535",  # nf-md-trending_up
     "moods": "\U000f01f5",  # nf-md-emoticon_happy_outline
+    # Player bar, as on the web app.
+    "thumb_up": "\U000f0513",  # nf-md-thumb_up
+    "thumb_up_off": "\U000f0514",  # nf-md-thumb_up_outline
+    "thumb_down": "\U000f0511",  # nf-md-thumb_down
+    "thumb_down_off": "\U000f0512",  # nf-md-thumb_down_outline
+    "more": "\U000f01d9",  # nf-md-dots_vertical
+    "expand": "\U000f0143",  # nf-md-chevron_up
+    "collapse": "\U000f0140",  # nf-md-chevron_down
     # Placeholders.
     "note": "\U000f075a",  # nf-md-music
 }
@@ -81,6 +89,13 @@ _UNICODE: dict[str, str] = {
     "volume_high": "◁))",
     "heart": "♥",
     "heart_off": "♡",
+    "thumb_up": "▲",
+    "thumb_up_off": "△",
+    "thumb_down": "▼",
+    "thumb_down_off": "▽",
+    "more": "⋮",
+    "expand": "⌃",
+    "collapse": "⌄",
     "radio": "((·))",
     "save": "+",
     "saved": "✓",

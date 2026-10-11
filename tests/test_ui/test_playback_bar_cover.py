@@ -58,7 +58,11 @@ async def test_no_real_images_keeps_the_half_block_art(monkeypatch):
 
 @pytest.mark.parametrize(
     ("button", "method"),
-    [("#pb-prev", "_play_previous"), ("#pb-play", "_toggle_play_pause"), ("#pb-next", "_play_next")],
+    [
+        ("#pb-prev", "_play_previous"),
+        ("#pb-play", "_toggle_play_pause"),
+        ("#pb-next", "_play_next"),
+    ],
 )
 async def test_the_bar_has_the_web_transport_buttons(button: str, method: str):
     from unittest.mock import AsyncMock
@@ -85,13 +89,37 @@ async def test_the_play_button_shows_pause_while_a_track_plays():
         assert str(app.query_one("#pb-play").render()) == "▶"
 
 
-async def test_the_heart_likes_the_playing_track():
+async def test_the_thumbs_rate_the_playing_track():
     from unittest.mock import AsyncMock
 
     app = _Host()
-    app._toggle_like_current = AsyncMock()
+    app._rate_current = AsyncMock()
     async with app.run_test(size=(120, 8)) as pilot:
         await pilot.click("#pb-heart")
         for _ in range(3):
             await pilot.pause()
-        app._toggle_like_current.assert_awaited_once()
+        app._rate_current.assert_awaited_once_with("LIKE")
+        await pilot.click("#pb-dislike")
+        for _ in range(3):
+            await pilot.pause()
+        app._rate_current.assert_awaited_with("DISLIKE")
+
+
+async def test_the_more_button_opens_the_playing_tracks_actions():
+    from types import SimpleNamespace
+
+    class _ActionsHost(_Host):
+        def __init__(self) -> None:
+            super().__init__()
+            self.player = SimpleNamespace(current_track={"video_id": "abc", "title": "Song"})
+            self.queue = SimpleNamespace(current_track=None)
+            self.asked: list[str] = []
+
+        def on_playback_bar_track_right_clicked(self, message: PlaybackBar.TrackRightClicked):
+            self.asked.append(message.track["video_id"])
+
+    app = _ActionsHost()
+    async with app.run_test(size=(120, 8)) as pilot:
+        await pilot.click("#pb-more")
+        await pilot.pause()
+        assert app.asked == ["abc"]

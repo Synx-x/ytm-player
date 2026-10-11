@@ -1214,7 +1214,13 @@ class PlaybackMixin(YTMHostBase):
 
         Cycles between LIKE and INDIFFERENT (no rating). Pressing this
         on a disliked track switches it to LIKE (clearing the dislike).
-        Dislike state is left to the existing track-actions popup.
+        """
+        await self._rate_current("LIKE")
+
+    async def _rate_current(self, rating: str) -> None:
+        """Give the playing track *rating* ("LIKE" or "DISLIKE"), or clear it if it has it.
+
+        As on the web app, a new dislike also skips to the next track.
         """
         if not self.player or not self.player.current_track:
             return
@@ -1223,18 +1229,19 @@ class PlaybackMixin(YTMHostBase):
         if not video_id:
             return
         if not self.ytmusic:
-            self.notify("Sign in to like songs", severity="warning", timeout=2)
+            verb = "like" if rating == "LIKE" else "rate"
+            self.notify(f"Sign in to {verb} songs", severity="warning", timeout=2)
             return
 
         current_status = (track.get("likeStatus") or "INDIFFERENT").upper()
-        new_status = "INDIFFERENT" if current_status == "LIKE" else "LIKE"
+        new_status = "INDIFFERENT" if current_status == rating else rating
 
         result = await self.ytmusic.rate_song(video_id, new_status)
         if result != "success":
             from ytm_player.services.ytmusic import mutation_failure_suffix
 
             self.notify(
-                f"Couldn't update like — {mutation_failure_suffix(result)}",
+                f"Couldn't update the rating — {mutation_failure_suffix(result)}",
                 severity="error",
                 timeout=3,
             )
@@ -1242,9 +1249,13 @@ class PlaybackMixin(YTMHostBase):
 
         # Update the track dict so subsequent reads reflect the new state.
         track["likeStatus"] = new_status
-        # Notify the user of the change.
-        msg = "Added to Liked songs" if new_status == "LIKE" else "Removed from Liked songs"
-        self.notify(msg, timeout=2)
+        messages = {
+            ("LIKE", "LIKE"): "Added to Liked songs",
+            ("LIKE", "INDIFFERENT"): "Removed from Liked songs",
+            ("DISLIKE", "DISLIKE"): "Disliked",
+            ("DISLIKE", "INDIFFERENT"): "Dislike removed",
+        }
+        self.notify(messages[(rating, new_status)], timeout=2)
         # Push the new state to the playback bar.
         try:
             from ytm_player.ui.playback_bar import PlaybackBar
@@ -1253,6 +1264,8 @@ class PlaybackMixin(YTMHostBase):
             bar.update_like_status(new_status)
         except Exception:
             logger.debug("Failed to push like status to playback bar", exc_info=True)
+        if new_status == "DISLIKE":
+            await self._play_next()
 
     # ── Download ─────────────────────────────────────────────────────
 
