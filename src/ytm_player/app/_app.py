@@ -53,6 +53,7 @@ from ytm_player.services.stream import StreamResolver
 from ytm_player.services.ytmusic import YTMusicService
 from ytm_player.ui.header_bar import HeaderBar
 from ytm_player.ui.playback_bar import PlaybackBar
+from ytm_player.ui.regular_weight import RegularWeightMixin
 from ytm_player.ui.selection_info_bar import SelectionInfoBar
 from ytm_player.ui.sidebars.lyrics_sidebar import LyricsSidebar
 from ytm_player.ui.sidebars.playlist_sidebar import PlaylistSidebar
@@ -120,6 +121,7 @@ class YTMPlayerApp(
     TrackActionsMixin,
     MPRISMixin,
     IPCMixin,
+    RegularWeightMixin,
     App,
 ):
     """The main ytm-player Textual application.

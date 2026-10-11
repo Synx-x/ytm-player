@@ -56,6 +56,10 @@ Callers today: `playback_bar.py`, `header_bar.py`, `pages/{home,library,search,e
 - A misspelled `[ui] icons` value degrades to auto detection with one log warning. It does not stop startup.
 - An unknown icon name is a programming error and raises `KeyError` at the call site.
 
+## Text weight
+
+Rendering uses the regular face of the terminal font for all text in the app. Rendering bold and italic in kitty needs separate font faces. Mixed faces made the app look like it used several fonts. Rendering now goes through a Textual line filter, added in `ui/regular_weight.py`, that removes bold and italic at render time. Rendering through the filter covers CSS `text-style`, Rich styles and Textual's own widgets. Rendering emphasis still works through colour and dim. Tests: `tests/test_ui/test_regular_weight.py`.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
