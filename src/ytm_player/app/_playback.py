@@ -747,6 +747,8 @@ class PlaybackMixin(YTMHostBase):
         from ytm_player.services.stream import StreamResolver
 
         main = self.stream_resolver
+        if main is None:
+            return []
         spares = getattr(self, "_spare_stream_resolvers", None)
         if not spares or spares[0].quality != main.quality:
             spares = [StreamResolver(main.quality) for _ in range(WARM_WORKERS)]

@@ -115,7 +115,7 @@ def _route_kitty_messages_through_textual() -> None:
                 tgp._TGP_MESSAGE_END,
             ]
         )
-        driver.write(tgp.prepare_terminal_sequence(sequence))
+        driver.write(tgp.prepare_terminal_sequence(sequence))  # type: ignore[attr-defined]
 
     routed._routed = True  # type: ignore[attr-defined]
     tgp._send_tgp_message = routed
@@ -274,7 +274,7 @@ def shrink_to_cells(path: Path, cols: int, rows: int) -> Path:
                     # coloured side pillars. Keep the art alone.
                     image = image.crop(_VIDEO_THUMB_ART)
                 # Fill the cover box, cropping the centre if the shapes differ.
-                image = ImageOps.fit(image, (width, height), Image.LANCZOS)
+                image = ImageOps.fit(image, (width, height), Image.Resampling.LANCZOS)
                 image = round_corners(image)
                 tmp = _temp_beside(target)
                 image.save(tmp, format="PNG")
@@ -297,7 +297,7 @@ def round_corners(image: Any, ratio: float = CORNER_RATIO) -> Any:
         (0, 0, width * scale - 1, height * scale - 1), radius=radius * scale, fill=255
     )
     rounded = image.convert("RGBA")
-    rounded.putalpha(mask.resize((width, height), Image.LANCZOS))
+    rounded.putalpha(mask.resize((width, height), Image.Resampling.LANCZOS))
     return rounded
 
 

@@ -152,16 +152,19 @@ class RelatedList(VerticalScroll):
         if not video_id or video_id == self._video_id:
             return
         self._video_id = video_id
-        self.remove_children()
+        self.run_worker(self._show_loading(video_id), group="related", exclusive=True)
+
+    async def _show_loading(self, video_id: str) -> None:
+        await self.remove_children()
         self.mount(Label("Loading related songs...", classes="un-empty"))
-        self.run_worker(self._load(video_id), group="related", exclusive=True)
+        await self._load(video_id)
 
     async def _load(self, video_id: str) -> None:
         ytmusic = getattr(self.app, "ytmusic", None)
         songs = await ytmusic.get_related_songs(video_id) if ytmusic else []
         if video_id != self._video_id:
             return
-        self.remove_children()
+        await self.remove_children()
         tracks = normalize_tracks(songs)[:_UP_NEXT_ROWS]
         if not tracks:
             self.mount(Label("No related songs.", classes="un-empty"))
@@ -299,10 +302,15 @@ class QueueChips(HorizontalScroll):
             return
         self._seed = seed
         self.chips = []
-        self.remove_children()
+        # Chips carry no ids, so a stale sweep only costs a redundant mount. The
+        # worker still needs the await so it runs after the sweep.
+        self.run_worker(self._clear_then_load(seed), group="queue-chips", exclusive=True)
+
+    async def _clear_then_load(self, seed: str) -> None:
+        await self.remove_children()
         self.remove_class("visible")
         if seed:
-            self.run_worker(self._load(seed), group="queue-chips", exclusive=True)
+            await self._load(seed)
 
     async def _load(self, seed: str) -> None:
         ytmusic = getattr(self.app, "ytmusic", None)
@@ -368,11 +376,11 @@ class UpNextList(VerticalScroll):
         super().__init__(**kwargs)
         self._shown: tuple[Any, ...] | None = None
 
-    def on_mount(self) -> None:
-        self.refresh_rows()
+    async def on_mount(self) -> None:
+        await self.refresh_rows()
         self.set_interval(_FOLLOW_SECONDS, self.refresh_rows)
 
-    def refresh_rows(self) -> None:
+    async def refresh_rows(self) -> None:
         queue = getattr(self.app, "queue", None)
         if queue is None:
             return
@@ -383,8 +391,12 @@ class UpNextList(VerticalScroll):
         signature = (queue.generation, queue.revision, len(tracks), current, autoplay_row)
         if signature == self._shown:
             return
+        # Record the signature only once the new rows exist, so a refresh that
+        # raises leaves the list eligible for the next attempt.
+        # remove_children returns AwaitRemove. Awaiting it before mounting keeps
+        # the old rows from sharing the id of a new AutoplayRow.
+        await self.remove_children()
         self._shown = signature
-        self.remove_children()
         if not tracks:
             self.mount(Label("Queue is empty.", classes="un-empty"))
             return
@@ -442,8 +454,10 @@ class NowPlayingPage(Widget):
 
     def on_mount(self) -> None:
         self.show_tab(self.active_tab)
-        self._follow()
-        self.set_interval(_FOLLOW_SECONDS, self._follow)
+        self.run_worker(self._follow(), group="np-follow")
+        self.set_interval(
+            _FOLLOW_SECONDS, lambda: self.run_worker(self._follow(), group="np-follow")
+        )
 
     def show_tab(self, key: str) -> None:
         """Show the pane tab *key*: "up-next", "lyrics" or "related"."""
@@ -520,7 +534,7 @@ class NowPlayingPage(Widget):
             PlaylistPicker(video_ids=[t["video_id"] for t in tracks], tracks=tracks)
         )
 
-    def _follow(self) -> None:
+    async def _follow(self) -> None:
         self.query_one("#np-chips", QueueChips).follow()
         source = self._source_name()
         self.query_one("#np-source", Label).update(f"Playing from  {source}" if source else "")

@@ -1237,12 +1237,13 @@ class SearchPage(Widget):
             return
         if event.button == 3:
             card = next((w for w in widget.ancestors_with_self if hasattr(w, "item")), None)
-            if card is not None and isinstance(card.item, dict):
+            item = getattr(card, "item", None) if card is not None else None
+            if isinstance(item, dict):
                 event.stop()
-                kind = (card.item.get("resultType") or "").lower()
+                kind = (item.get("resultType") or "").lower()
                 panel = _PANEL_FOR_TYPE.get(kind, "")
                 self.on_search_result_panel_item_right_clicked(
-                    SearchResultPanel.ItemRightClicked(card.item, panel)
+                    SearchResultPanel.ItemRightClicked(item, panel)
                 )
                 return
         # Match the #search-mode Static or any child of it.
