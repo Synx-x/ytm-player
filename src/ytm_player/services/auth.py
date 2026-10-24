@@ -786,7 +786,12 @@ def _probe_account(auth_path: str, slot: int) -> _ProbedAccount | None:
     raw form because ytmusicapi only parses the display fields out of it.
     """
     ytm = YTMusic(auth_path)
-    account = ytm.get_account_info()
+    try:
+        account = ytm.get_account_info()
+    except KeyError:
+        # A signed-out or expired session answers with a menu that has no
+        # account header. That is "no account here", not a bad request.
+        return None
     name = account.get("accountName")
     if not name:
         return None
@@ -987,16 +992,25 @@ class AuthManager:
             print()
             return self._setup_manual()
 
-        # Auto-detect browser.
-        detected = self._detect_browser()
-        if detected:
-            browser, cookies, jar = detected
+        # Auto-detect browser, then try the rest. A browser with stale
+        # sign-in cookies sorts first here, as Firefox does before Zen, and
+        # its cookies fail the account probe while a later browser works.
+        tried = False
+        for browser, cookies, jar in self._browser_candidates():
+            tried = True
             print(f"  Found YouTube cookies in {browser}.")
             print("  Extracting automatically...")
             print()
-            if self._save_youtube_cookies(cookies, interactive=True, stream_jar=jar):
-                return True
-            print("  Auto-extraction failed. Falling back to manual setup.")
+            try:
+                if self._save_youtube_cookies(cookies, interactive=True, stream_jar=jar):
+                    return True
+            except Exception:
+                logger.debug("Setup from %s failed", browser, exc_info=True)
+            print(f"  {browser} did not authenticate. Trying the next browser.")
+            print()
+        if tried:
+            print("  No browser had a working YouTube Music sign-in.")
+            print("  Falling back to manual setup.")
             print()
 
         return self._setup_manual()
