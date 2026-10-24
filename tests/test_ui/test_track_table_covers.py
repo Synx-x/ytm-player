@@ -144,3 +144,21 @@ async def test_albums_keep_numbers_and_no_covers(loaded_urls):
 def test_load_cover_picture_returns_none_without_a_download(monkeypatch):
     monkeypatch.setattr(cover, "fetch_thumbnail", lambda url: None)
     assert asyncio.run(cover.load_cover_picture("https://example.invalid/x.jpg", 6, 3)) is None
+
+
+async def test_a_layout_pass_still_loads_covers_after_the_title_refit(loaded_urls):
+    """_invalidate_table schedules two post-refresh jobs: the settled title refit
+    and the visible-cover load. A merge once kept only one of them."""
+    app = _Host(show_covers=True)
+    async with app.run_test(size=(100, 20)) as pilot:
+        table = app.query_one(TrackTable)
+        table.load_tracks(TRACKS)
+        await pilot.pause(0.5)
+        loaded_urls.clear()
+        # Covers are cached by url, so drop the cache to force a real fetch.
+        table._cover_pictures.clear()
+        table._covers_pending.clear()
+        table._invalidate_table()
+        await pilot.pause(0.6)
+        assert loaded_urls, "no cover loaded after a layout pass"
+        assert not table._refill_pending
