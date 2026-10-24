@@ -39,6 +39,7 @@ class LibraryPanel(Widget):
     LibraryPanel {
         height: 1fr;
         padding: 1 1 0 1;
+        background: $background;
     }
 
     LibraryPanel .panel-title {
@@ -61,6 +62,7 @@ class LibraryPanel(Widget):
     LibraryPanel ListView {
         height: 1fr;
         width: 1fr;
+        background: $background;
     }
 
     LibraryPanel ListView ListItem:hover {
@@ -511,6 +513,7 @@ class PlaylistSidebar(Widget):
     PlaylistSidebar {
         width: 30;
         height: 1fr;
+        background: $background;
         border-right: solid $border;
     }
 
@@ -522,6 +525,7 @@ class PlaylistSidebar(Widget):
     #ps-pinned-nav {
         height: auto;
         padding: 1 1 0 1;
+        background: $background;
     }
 
     .ps-pinned-item {

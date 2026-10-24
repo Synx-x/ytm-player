@@ -228,3 +228,25 @@ async def test_controls_sit_midway_between_the_seek_line_and_the_bottom_edge():
         above = play.y - seek.bottom
         below = bar.bottom - play.bottom
         assert above == below == 1
+
+
+async def test_the_playlist_sidebar_paints_black_instead_of_letting_grey_through():
+    """The sidebar and its panels set no background, so the app body's grey
+    showed through. Each of them must paint the background colour itself."""
+    from ytm_player.app._app import YTMPlayerApp
+    from ytm_player.ui.sidebars.playlist_sidebar import LibraryPanel, PlaylistSidebar
+
+    app = YTMPlayerApp()
+    async with app.run_test(size=(140, 40)) as pilot:
+        await pilot.pause(1.0)
+        sidebar = app.query_one(PlaylistSidebar)
+        # A transparent colour shows the app body's grey underneath, so each
+        # surface must read opaque black rather than carry a zero alpha.
+        assert sidebar.styles.background.rgb == (0, 0, 0)
+        assert sidebar.styles.background.a == 1
+        for panel in list(app.query(LibraryPanel)):
+            assert panel.styles.background.rgb == (0, 0, 0)
+            assert panel.styles.background.a == 1
+        lv = app.query_one("LibraryPanel ListView")
+        assert lv.styles.background.rgb == (0, 0, 0)
+        assert lv.styles.background.a == 1
