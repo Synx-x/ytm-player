@@ -14,7 +14,9 @@ def test_the_theme_is_full_black_with_a_dim_green_accent_and_grey_chrome():
     assert YTM_DARK.background == "#000000" and YTM_DARK.surface == "#000000"
     assert YTM_DARK.primary == "#6aa81e"
     for name in ("border", "scrollbar", "block-cursor-background"):
-        assert YTM_DARK.variables[name].startswith("#1") or YTM_DARK.variables[name].startswith("#2")
+        assert YTM_DARK.variables[name].startswith("#1") or YTM_DARK.variables[name].startswith(
+            "#2"
+        )
 
 
 def test_horizontal_bars_draw_a_thin_line_and_vertical_bars_stay_one_cell():

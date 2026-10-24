@@ -131,6 +131,11 @@ def test_mood_cards_parse_from_the_raw_page_even_with_a_plain_text_author():
             "thumbnailRenderer": {"musicThumbnailRenderer": {"thumbnail": {"thumbnails": ART}}},
         }}]}}]}  # fmt: skip
     assert _two_row_cards(raw) == [
-        {"resultType": "playlist", "title": "EKDUM", "description": "Joseph",
-         "browseId": "VLRD1", "thumbnails": ART}  # fmt: skip
+        {
+            "resultType": "playlist",
+            "title": "EKDUM",
+            "description": "Joseph",
+            "browseId": "VLRD1",
+            "thumbnails": ART,
+        }  # fmt: skip
     ]

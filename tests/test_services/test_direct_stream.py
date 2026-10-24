@@ -51,8 +51,9 @@ def real_lookup(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(direct_stream, "lookup", importlib.reload(direct_stream).lookup)
     answers: dict[str, bytes] = {
         "home": b'<script>ytcfg.set({"VISITOR_DATA":"CgtVSVNJVE9S"});</script>',
-        "player": json.dumps({"playabilityStatus": {"status": "OK"},
-                              "streamingData": {"adaptiveFormats": FORMATS}}).encode(),  # fmt: skip
+        "player": json.dumps(
+            {"playabilityStatus": {"status": "OK"}, "streamingData": {"adaptiveFormats": FORMATS}}
+        ).encode(),  # fmt: skip
     }
     sent: list[dict] = []
 

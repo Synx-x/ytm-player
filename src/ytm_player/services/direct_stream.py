@@ -117,7 +117,9 @@ def lookup(video_id: str, quality: str) -> dict[str, Any] | None:
         forget_visitor()
         return None
     if data.get("playabilityStatus", {}).get("status") != "OK":
-        logger.debug("Direct lookup not playable for %s: %s", video_id, data.get("playabilityStatus"))
+        logger.debug(
+            "Direct lookup not playable for %s: %s", video_id, data.get("playabilityStatus")
+        )
         return None
     streaming = data.get("streamingData") or {}
     chosen = pick_audio(streaming.get("adaptiveFormats") or [], quality)

@@ -195,7 +195,11 @@ class LibraryPage(TrackFilterHost, Widget):
             return
         mount_started = time.monotonic()
         await grid.mount_all(HomeCard(p) for p in playlists)
-        logger.debug("library grid: %d cards mounted in %.2fs", len(playlists), time.monotonic() - mount_started)
+        logger.debug(
+            "library grid: %d cards mounted in %.2fs",
+            len(playlists),
+            time.monotonic() - mount_started,
+        )
         relayout_soon(self)
 
     # First batch size for progressive playlist loading.

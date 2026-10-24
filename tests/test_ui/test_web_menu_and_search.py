@@ -27,8 +27,13 @@ class _SidebarHost(App):
 
 @pytest.mark.parametrize(
     ("item_id", "page"),
-    [("ps-nav-home", "home"), ("ps-nav-explore", "explore"), ("ps-nav-library", "library"),
-     ("ps-nav-liked", "liked_songs"), ("ps-nav-recent", "recently_played")],  # fmt: skip
+    [
+        ("ps-nav-home", "home"),
+        ("ps-nav-explore", "explore"),
+        ("ps-nav-library", "library"),
+        ("ps-nav-liked", "liked_songs"),
+        ("ps-nav-recent", "recently_played"),
+    ],  # fmt: skip
 )
 async def test_each_menu_item_opens_its_page(item_id: str, page: str) -> None:
     app = _SidebarHost()
@@ -103,7 +108,9 @@ async def test_menu_icons_are_one_cell_and_items_are_spaced_like_the_playlists()
         assert {b - a for a, b in zip(ys, ys[1:])} == {2}
 
 
-@pytest.mark.parametrize(("item_id", "nav_id"), [("ps-nav-queue", "queue"), ("ps-nav-import", "spotify_import")])
+@pytest.mark.parametrize(
+    ("item_id", "nav_id"), [("ps-nav-queue", "queue"), ("ps-nav-import", "spotify_import")]
+)
 async def test_queue_and_import_moved_into_the_menu(item_id: str, nav_id: str) -> None:
     app = _SidebarHost()
     async with app.run_test(size=(40, 40)) as pilot:

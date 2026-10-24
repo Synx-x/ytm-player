@@ -14,10 +14,20 @@ from ytm_player.ui.pages import home
 from ytm_player.ui.pages.home import HomeCard, HomePage, Shelf, ShelfRow
 from ytm_player.ui.widgets import cover
 
-SONG = {"title": "Instant Crush", "videoId": "vid123", "resultType": "song",
-        "artists": [{"name": "Daft Punk"}], "thumbnails": [{"url": "u1", "width": 226}]}
-ALBUM = {"title": "Random Access Memories", "browseId": "MPREb_ram", "type": "Album",
-         "artists": [{"name": "Daft Punk"}], "thumbnails": [{"url": "u2", "width": 226}]}
+SONG = {
+    "title": "Instant Crush",
+    "videoId": "vid123",
+    "resultType": "song",
+    "artists": [{"name": "Daft Punk"}],
+    "thumbnails": [{"url": "u1", "width": 226}],
+}
+ALBUM = {
+    "title": "Random Access Memories",
+    "browseId": "MPREb_ram",
+    "type": "Album",
+    "artists": [{"name": "Daft Punk"}],
+    "thumbnails": [{"url": "u2", "width": 226}],
+}
 PLAYLIST = {"title": "Replay Mix", "playlistId": "RDTMAK5uy", "description": "Mix",
             "thumbnails": [{"url": "u3", "width": 226}]}  # fmt: skip
 
@@ -26,7 +36,10 @@ def _feed(cards_per_shelf: int = 10) -> list[dict]:
     filler = [dict(SONG, title=f"Song {i}", videoId=f"v{i}") for i in range(cards_per_shelf - 3)]
     return [
         {"title": "Listen again", "contents": [SONG, ALBUM, PLAYLIST, *filler]},
-        {"title": "Quick picks", "contents": [dict(SONG, title="Second shelf song", videoId="v2x")]},
+        {
+            "title": "Quick picks",
+            "contents": [dict(SONG, title="Second shelf song", videoId="v2x")],
+        },
         {"title": "Empty shelf", "contents": []},
     ]
 
@@ -45,7 +58,9 @@ class _Host(App):
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(home, "get_settings", lambda: SimpleNamespace(ui=SimpleNamespace(home_shelves=3)))
+    monkeypatch.setattr(
+        home, "get_settings", lambda: SimpleNamespace(ui=SimpleNamespace(home_shelves=3))
+    )
     monkeypatch.setattr(cover, "fetch_thumbnail", lambda url: None)
     monkeypatch.setattr(home, "_feed_cache", None)
 
@@ -97,7 +112,9 @@ async def test_click_playlist_card_opens_playlist_page():
         await _ready(pilot)
         await pilot.click(app.query(Shelf).first().cards()[2])
         await pilot.pause()
-        app.navigate_to.assert_awaited_with("context", context_type="playlist", context_id="RDTMAK5uy")
+        app.navigate_to.assert_awaited_with(
+            "context", context_type="playlist", context_id="RDTMAK5uy"
+        )
 
 
 async def test_opening_a_card_that_replaces_the_page_does_not_hang():

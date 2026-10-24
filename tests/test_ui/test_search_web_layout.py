@@ -168,11 +168,14 @@ async def test_the_albums_chip_shows_only_albums_and_fetches_more():
             await pilot.pause()
         page = app.query_one(SearchPage)
         assert page.has_class("-only-cards") and page.search_filter == "albums"
-        assert not app.query_one("#search-top").display or not app.query_one(
-            "#search-top"
-        ).region.height
+        assert (
+            not app.query_one("#search-top").display
+            or not app.query_one("#search-top").region.height
+        )
         grid = app.query_one("#search-filtered")
-        assert [str(c.query_one(".card-title").render()) for c in grid.query(HomeCard)] == ["INSANO"]
+        assert [str(c.query_one(".card-title").render()) for c in grid.query(HomeCard)] == [
+            "INSANO"
+        ]
         app.ytmusic.search.assert_awaited_once_with("kid cudi", filter="albums", limit=40)
 
 

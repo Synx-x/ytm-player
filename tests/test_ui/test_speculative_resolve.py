@@ -101,7 +101,9 @@ async def test_a_loaded_track_list_warms_its_first_songs():
 async def test_moving_the_cursor_warms_the_rows_below_it():
     app = _Host()
     calls: list[tuple[list[str], str]] = []
-    app.warm_streams = lambda ids, ahead=False: calls.append((ids, "warm-ahead" if ahead else "warm-streams"))
+    app.warm_streams = lambda ids, ahead=False: calls.append(
+        (ids, "warm-ahead" if ahead else "warm-streams")
+    )
     async with app.run_test(size=(100, 20)) as pilot:
         await pilot.pause()
         await pilot.press("down")
@@ -113,10 +115,14 @@ async def test_rows_scrolled_into_view_are_warmed(monkeypatch):
     from ytm_player.ui.widgets import track_table
 
     monkeypatch.setattr(track_table, "WARM_SCROLL_PAUSE", 0.05)
-    many = [{"video_id": f"r{i}", "title": f"S{i}", "artist": "A", "duration": 1} for i in range(60)]
+    many = [
+        {"video_id": f"r{i}", "title": f"S{i}", "artist": "A", "duration": 1} for i in range(60)
+    ]
     app = _Host()
     calls: list[tuple[list[str], str]] = []
-    app.warm_streams = lambda ids, ahead=False: calls.append((ids, "warm-ahead" if ahead else "warm-streams"))
+    app.warm_streams = lambda ids, ahead=False: calls.append(
+        (ids, "warm-ahead" if ahead else "warm-streams")
+    )
     async with app.run_test(size=(100, 20)) as pilot:
         table = app.query_one(TrackTable)
         table.load_tracks(many)

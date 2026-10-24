@@ -121,7 +121,9 @@ class ExplorePage(Widget):
         widgets: list[Widget] = [Shelf(title, items) for title, items in explore_shelves(feed)]
         moods = [m for m in feed.get("moods_and_genres") or [] if m.get("params")]
         if moods:
-            widgets.append(Label("Moods & genres", id="explore-moods-title", classes="explore-title"))
+            widgets.append(
+                Label("Moods & genres", id="explore-moods-title", classes="explore-title")
+            )
             chips = [Static(m.get("title", ""), classes="mood-chip") for m in moods]
             for chip, mood in zip(chips, moods):
                 chip.mood = mood  # type: ignore[attr-defined]
@@ -156,7 +158,9 @@ class ExplorePage(Widget):
         # Navigating removes this page. Awaiting that from its own handler
         # deadlocks, so the navigation runs as a worker on the app.
         page, kwargs = target
-        self.app.run_worker(_navigate(self.app, page, **kwargs), group="explore-open", exclusive=True)
+        self.app.run_worker(
+            _navigate(self.app, page, **kwargs), group="explore-open", exclusive=True
+        )
 
     async def handle_action(self, action: Action, count: int = 1) -> None:
         scroll = self.query_one("#explore-scroll", VerticalScroll)
@@ -177,12 +181,12 @@ class ExplorePage(Widget):
 class MoodPage(Widget):
     """The playlists of one mood or genre, as a grid of cover cards."""
 
-    DEFAULT_CSS = f"""
-    MoodPage {{ width: 1fr; height: 1fr; }}
-    MoodPage > #mood-scroll {{ padding: 1 3; }}
-    MoodPage .mood-title {{ text-style: bold; margin-bottom: 1; }}
-    MoodPage .mood-status {{ color: $text-muted; }}
-    MoodPage #mood-grid {{ height: auto; grid-gutter: 1 2; }}
+    DEFAULT_CSS = """
+    MoodPage { width: 1fr; height: 1fr; }
+    MoodPage > #mood-scroll { padding: 1 3; }
+    MoodPage .mood-title { text-style: bold; margin-bottom: 1; }
+    MoodPage .mood-status { color: $text-muted; }
+    MoodPage #mood-grid { height: auto; grid-gutter: 1 2; }
     """
 
     def __init__(self, *, title: str = "", params: str = "", **kwargs: Any) -> None:
@@ -204,7 +208,9 @@ class MoodPage(Widget):
         playlists = await ytmusic.get_mood_playlists(self.params) if ytmusic else None
         status = self.query_one(".mood-status", Label)
         if not playlists:
-            status.update("Couldn't load these playlists." if playlists is None else "No playlists.")
+            status.update(
+                "Couldn't load these playlists." if playlists is None else "No playlists."
+            )
             return
         status.display = False
         await self.query_one("#mood-grid", ItemGrid).mount(*[HomeCard(p) for p in playlists])

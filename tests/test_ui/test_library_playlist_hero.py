@@ -85,7 +85,9 @@ async def test_the_header_shows_the_large_cover_and_the_web_buttons():
         assert str(page.query_one(".context-title").render()) == "Hip-Hop & Rap"
 
 
-@pytest.mark.parametrize(("button", "shuffle"), [("play-all-btn", False), ("shuffle-all-btn", True)])
+@pytest.mark.parametrize(
+    ("button", "shuffle"), [("play-all-btn", False), ("shuffle-all-btn", True)]
+)
 async def test_play_and_shuffle_play_the_whole_playlist(button: str, shuffle: bool):
     app = _Host()
     async with app.run_test(size=(140, 40)) as pilot:
