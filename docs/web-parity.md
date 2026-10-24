@@ -32,6 +32,10 @@ Status values: `done`, `partial`, `todo`.
 | B9 | Explore: new releases, charts, moods | Explore page: New releases and Charts buttons, shelves of new albums, trending and new videos, mood and genre chips that open a grid of playlists | done |
 | B10 | Library page: grid of your playlists | Cover grid, cached for 10 minutes | done |
 | B11 | Back to Home is instant | Home feed cached for 10 minutes | done |
+| B12 | Search: "Showing results for X, Search instead for Y" and "Did you mean: X" | Spelling note above the chips, changed words in the primary colour. "Search instead for" searches as typed, then the note turns to "Did you mean" (Pilot-tested, live click test pending) | partial |
+| B13 | Up next: mix chips on a radio (All, Familiar, Discover, Deep cuts ...) | Chips load once per track radio. A pick replaces the tracks after the playing one (Pilot-tested, live click test pending) | partial |
+| B14 | Up next: Autoplay switch at the end of a queue that is not a radio | Switch after the last track. It sets `[playback] autoplay` and saves the config (Pilot-tested, live click test pending) | partial |
+| B15 | Up next: Save the queue to a playlist | Save beside "Playing from" opens the playlist picker with every queued track (Pilot-tested, not clicked live because it writes to the account) | partial |
 
 ## Speed
 

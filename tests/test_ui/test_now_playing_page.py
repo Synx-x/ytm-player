@@ -198,7 +198,7 @@ async def test_clicking_lyrics_shows_the_centred_lyrics_in_the_pane():
         assert app.query_one("#np-switch").current == "np-lyrics"
         lyrics = app.query_one("#np-lyrics", LyricsSidebar)
         assert lyrics.has_class("in-pane") and lyrics.display
-        assert not app.query_one("#np-source").display
+        assert not app.query_one("#np-head").display  # "Playing from" and Save
         page.toggle_lyrics_tab()
         assert page.active_tab == "up-next"
 

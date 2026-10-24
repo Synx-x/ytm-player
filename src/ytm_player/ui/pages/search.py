@@ -12,6 +12,7 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Any, ClassVar, cast
 
+from rich.text import Text
 from textual.app import ComposeResult
 from textual.containers import Horizontal, ItemGrid, Vertical, VerticalScroll
 from textual.events import Click
@@ -314,6 +315,71 @@ class SearchChips(Horizontal):
             page.show_filter((widget.id or "").removeprefix("chip-"))
 
 
+class SpellingNote(Horizontal):
+    """The web app's spelling note above the results.
+
+    "Showing results for <corrected>  Search instead for <original>" when the
+    server corrected the query, or "Did you mean: <corrected>" when it only
+    suggests one. Changed words are in the primary colour. Each query is a link.
+    """
+
+    DEFAULT_CSS = """
+    SpellingNote { height: 2; padding: 0 1; display: none; }
+    SpellingNote.visible { display: block; }
+    SpellingNote > Static { width: auto; height: 1; }
+    SpellingNote > .spell-label { color: $text-muted; margin-right: 1; }
+    SpellingNote > .spell-link:hover { text-style: underline; }
+    SpellingNote > #spell-original { margin-right: 0; }
+    SpellingNote > #spell-instead { margin-left: 3; }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.correction: dict[str, Any] | None = None
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="spell-lead", classes="spell-label")
+        yield Static("", id="spell-corrected", classes="spell-link")
+        yield Static("", id="spell-instead", classes="spell-label")
+        yield Static("", id="spell-original", classes="spell-link")
+
+    def show(self, correction: dict[str, Any] | None) -> None:
+        """Show *correction* (see YTMusicService.get_search_correction), or hide on None."""
+        self.correction = correction
+        self.set_class(correction is not None, "visible")
+        if correction is None:
+            return
+        primary = get_theme().primary
+        corrected = Text()
+        for text, changed in correction.get("runs") or [(correction["corrected"], True)]:
+            corrected.append(text, style=primary if changed else "")
+        showing = correction.get("kind") == "showing"
+        self.query_one("#spell-lead", Static).update(
+            "Showing results for" if showing else "Did you mean:"
+        )
+        self.query_one("#spell-corrected", Static).update(corrected)
+        self.query_one("#spell-instead", Static).update("Search instead for" if showing else "")
+        self.query_one("#spell-original", Static).update(
+            correction.get("original", "") if showing else ""
+        )
+        for widget_id in ("#spell-instead", "#spell-original"):
+            self.query_one(widget_id).display = showing
+
+    def on_click(self, event: Click) -> None:
+        widget = event.widget
+        if widget is None or event.button != 1 or self.correction is None:
+            return
+        page = next((a for a in self.ancestors if isinstance(a, SearchPage)), None)
+        if page is None:
+            return
+        if widget.id == "spell-corrected":
+            event.stop()
+            page.search_for(self.correction["corrected"])
+        elif widget.id == "spell-original":
+            event.stop()
+            page.search_for(self.correction["original"], ignore_spelling=True)
+
+
 _SHELVES = (
     ("albums", "Albums", "albums-panel"),
     ("artists", "Artists", "artists-panel"),
@@ -566,7 +632,10 @@ class SearchPage(Widget):
         }
         self.search_filter = "all"
         # More results per (query, chip), fetched the first time a chip is picked.
-        self._filtered_cache: dict[tuple[str, str], list[dict[str, Any]]] = {}
+        self._filtered_cache: dict[tuple[str, str, bool], list[dict[str, Any]]] = {}
+        # True while the shown results are for the query as typed, after
+        # "Search instead for" turned the server's spelling correction off.
+        self._ignore_spelling = False
         # State restoration from navigation.
         self._restore_query = last_query
         self._restore_mode = search_mode
@@ -585,6 +654,7 @@ class SearchPage(Widget):
                 yield Static(f"[{mode_color}]▶[/{mode_color}] Music", id="search-mode")
             yield SuggestionList(id="suggestion-overlay")
             yield Static("", id="loading-msg", classes="loading-indicator")
+            yield SpellingNote(id="spelling-note")
             yield SearchChips(id="search-chips")
             with VerticalScroll(id="search-results"):
                 with Horizontal(id="search-top"):
@@ -878,12 +948,27 @@ class SearchPage(Widget):
     # Search execution
     # ------------------------------------------------------------------
 
-    def _start_search(self, query: str) -> None:
+    def search_for(self, query: str, *, ignore_spelling: bool = False) -> None:
+        """Put *query* in the search box and search it, as the spelling note's links do."""
+        search_input = self.query_one("#search-input", Input)
+        if search_input.value != query:
+            # Same guard as a picked suggestion: the Changed event must not
+            # open the suggestions overlay over the new results.
+            self._restoring = True
+            search_input.value = query
+        self._hide_suggestions()
+        self._last_query = query
+        self._start_search(query, ignore_spelling=ignore_spelling)
+
+    def _start_search(self, query: str, *, ignore_spelling: bool = False) -> None:
         """Run the search as this page's worker.
 
         A suggestions fetch still in flight is cancelled: landing after a
         fast search, it would cover the results with the overlay.
+        *ignore_spelling* searches the query as typed. A new query typed or
+        picked by the user always starts with the server's correction on.
         """
+        self._ignore_spelling = ignore_spelling
         self.workers.cancel_group(self, self.SUGGEST_GROUP)
         self.run_worker(
             self._execute_search(query), name="search", group=self.SEARCH_GROUP, exclusive=True
@@ -895,14 +980,13 @@ class SearchPage(Widget):
         self._update_loading("Searching...")
 
         try:
-            if self.search_mode == "music":
-                results = await self._search_music(query)
-            else:
-                results = await self._search_all(query)
+            search = self._search_music if self.search_mode == "music" else self._search_all
+            results, correction = await asyncio.gather(search(query), self._fetch_correction(query))
 
             self._search_results = results
             self._last_query = query
             self._populate_results(results)
+            self.query_one("#spelling-note", SpellingNote).show(correction)
 
             # Log the search to history.
             total_count = sum(len(v) for v in results.values())
@@ -932,6 +1016,21 @@ class SearchPage(Widget):
         finally:
             self.is_loading = False
 
+    def _spelling_kwargs(self) -> dict[str, Any]:
+        """Search keywords for the current query: ignore_spelling only when it is on."""
+        return {"ignore_spelling": True} if self._ignore_spelling else {}
+
+    async def _fetch_correction(self, query: str) -> dict[str, Any] | None:
+        """The spelling note for *query*, fetched beside the results. None on any failure."""
+        ytmusic = cast("YTMHostBase", self.app).ytmusic
+        if ytmusic is None:
+            return None
+        try:
+            return await ytmusic.get_search_correction(query, ignore_spelling=self._ignore_spelling)
+        except Exception:
+            logger.exception("Spelling note lookup failed for %r", query)
+            return None
+
     async def _search_music(self, query: str) -> dict[str, list[dict[str, Any]]]:
         """Execute filtered searches for each category (music-only mode)."""
         results: dict[str, list[dict[str, Any]]] = {
@@ -946,10 +1045,10 @@ class SearchPage(Widget):
         assert ytmusic is not None
         # Run all four searches concurrently.
         tasks = {
-            category: ytmusic.search(query, filter=api_filter, limit=10)
+            category: ytmusic.search(query, filter=api_filter, limit=10, **self._spelling_kwargs())
             for category, api_filter in self._MUSIC_FILTERS.items()
         }
-        tasks["top"] = ytmusic.search(query, filter=None, limit=1)
+        tasks["top"] = ytmusic.search(query, filter=None, limit=1, **self._spelling_kwargs())
 
         gathered = await asyncio.gather(*tasks.values(), return_exceptions=True)
 
@@ -976,7 +1075,7 @@ class SearchPage(Widget):
 
         ytmusic = cast("YTMHostBase", self.app).ytmusic
         assert ytmusic is not None
-        raw = await ytmusic.search(query, filter=None, limit=40)
+        raw = await ytmusic.search(query, filter=None, limit=40, **self._spelling_kwargs())
         top = top_result(raw)
         results["top"] = [top] if top else []
 
@@ -1023,13 +1122,19 @@ class SearchPage(Widget):
         """Fetch more results of one category, then show them."""
         if not query:
             return
-        items = self._filtered_cache.get((query, key))
+        cache_key = (query, key, self._ignore_spelling)
+        items = self._filtered_cache.get(cache_key)
         if items is None:
             ytmusic = cast("YTMHostBase", self.app).ytmusic
             api_filter = self._MUSIC_FILTERS[key]
             try:
                 items = (
-                    await ytmusic.search(query, filter=api_filter, limit=FILTERED_LIMIT)
+                    await ytmusic.search(
+                        query,
+                        filter=api_filter,
+                        limit=FILTERED_LIMIT,
+                        **self._spelling_kwargs(),
+                    )
                     if ytmusic
                     else []
                 )
@@ -1037,7 +1142,7 @@ class SearchPage(Widget):
                 logger.exception("Filtered search failed for %r (%s)", query, key)
                 items = []
             items = items or self._search_results.get(key, [])
-            self._filtered_cache[(query, key)] = items
+            self._filtered_cache[cache_key] = items
         if self.search_filter != key or self._last_query != query:
             return
         if key == "songs":
@@ -1110,6 +1215,7 @@ class SearchPage(Widget):
         self._last_query = ""
         try:
             self._populate_results(self._search_results)
+            self.query_one("#spelling-note", SpellingNote).show(None)
         except Exception:
             logger.debug("Failed to clear stale search results", exc_info=True)
 
@@ -1169,7 +1275,7 @@ class SearchPage(Widget):
 
         # Re-run the last search with the new mode if we have a query.
         if self._last_query:
-            self._start_search(self._last_query)
+            self._start_search(self._last_query, ignore_spelling=self._ignore_spelling)
 
     # ------------------------------------------------------------------
     # Track and item selection handlers

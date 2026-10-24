@@ -198,6 +198,92 @@ def _two_row_cards(node: Any) -> list[dict[str, Any]]:
     return cards
 
 
+def _find_key(node: Any, key: str) -> Any:
+    """The value of the first *key* in a raw response, depth first, or None."""
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        if isinstance(current, dict):
+            if key in current:
+                return current[key]
+            stack.extend(reversed(list(current.values())))
+        elif isinstance(current, list):
+            stack.extend(reversed(current))
+    return None
+
+
+def _run_text(runs_holder: Any) -> str:
+    return "".join(r.get("text", "") for r in (runs_holder or {}).get("runs", []))
+
+
+def parse_search_correction(response: Any, query: str) -> dict[str, Any] | None:
+    """The spelling note the web app shows above search results, or None.
+
+    YouTube Music either searched a corrected query ("Showing results for X,
+    Search instead for Y") or only suggests one ("Did you mean: X"). The
+    result has ``kind`` ("showing" or "did_you_mean"), ``corrected``,
+    ``original``, and ``runs``: the corrected query as ``(text, changed)``
+    pairs, where a changed word is one the server put in italics.
+    """
+    for key, kind in (
+        ("showingResultsForRenderer", "showing"),
+        ("didYouMeanRenderer", "did_you_mean"),
+    ):
+        renderer = _find_key(response, key)
+        if not isinstance(renderer, dict):
+            continue
+        corrected = (
+            renderer.get("correctedQueryEndpoint", {}).get("searchEndpoint", {}).get("query")
+            or _run_text(renderer.get("correctedQuery"))
+        ).strip()
+        if not corrected:
+            continue
+        runs = [
+            (r.get("text", ""), bool(r.get("italics")))
+            for r in renderer.get("correctedQuery", {}).get("runs", [])
+        ] or [(corrected, True)]
+        original = _run_text(renderer.get("originalQuery")) or query
+        return {"kind": kind, "corrected": corrected, "original": original, "runs": runs}
+    return None
+
+
+def _queue_renderer(response: Any) -> dict[str, Any]:
+    """The Up next tab's ``musicQueueRenderer`` of a raw ``next`` response, or {}."""
+    queue = _find_key(response, "musicQueueRenderer")
+    return queue if isinstance(queue, dict) else {}
+
+
+def parse_queue_chips(response: Any) -> list[dict[str, Any]]:
+    """The mix chips above a radio's Up next (All, Familiar, Discover ...).
+
+    Each chip has ``label``, ``playlist_id`` and ``params`` for the queue it
+    loads, and ``selected``. A queue that is not a radio has none.
+    """
+    cloud = _queue_renderer(response).get("subHeaderChipCloud", {}).get("chipCloudRenderer", {})
+    chips: list[dict[str, Any]] = []
+    for item in cloud.get("chips", []):
+        chip = item.get("chipCloudChipRenderer", {})
+        endpoint = _find_key(chip.get("navigationEndpoint", {}), "watchEndpoint") or {}
+        label = _run_text(chip.get("text"))
+        if label and endpoint.get("playlistId"):
+            chips.append(
+                {
+                    "label": label,
+                    "playlist_id": endpoint["playlistId"],
+                    "params": endpoint.get("params", ""),
+                    "selected": bool(chip.get("isSelected")),
+                }
+            )
+    return chips
+
+
+_WATCH_BODY = {
+    "enablePersistentPlaylistPanel": True,
+    "isAudioOnly": True,
+    "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+}
+
+
 class YTMusicService:
     """Async wrapper around ytmusicapi.YTMusic.
 
@@ -403,6 +489,8 @@ class YTMusicService:
         query: str,
         filter: str | None = None,
         limit: int = 20,
+        *,
+        ignore_spelling: bool = False,
     ) -> list[dict[str, Any]]:
         """Search YouTube Music.
 
@@ -411,12 +499,17 @@ class YTMusicService:
             filter: One of ``"songs"``, ``"videos"``, ``"albums"``,
                 ``"artists"``, ``"playlists"``, or ``None`` for all.
             limit: Maximum number of results.
+            ignore_spelling: Search *query* as typed, without the server's
+                spelling correction ("Search instead for" on the web).
 
         Returns:
             List of result dicts.
         """
+        kwargs: dict[str, Any] = {"filter": filter, "limit": limit}
+        if ignore_spelling:
+            kwargs["ignore_spelling"] = True
         try:
-            return await self._call(self.client.search, query, filter=filter, limit=limit)
+            return await self._call(self.client.search, query, **kwargs)
         except asyncio.TimeoutError:
             logger.warning("Search timed out for query=%r", query)
             return []
@@ -431,6 +524,28 @@ class YTMusicService:
         except Exception:
             logger.exception("get_search_suggestions failed for query=%r", query)
             return []
+
+    async def get_search_correction(
+        self, query: str, *, ignore_spelling: bool = False
+    ) -> dict[str, Any] | None:
+        """The web app's "Showing results for" or "Did you mean" note for *query*, or None.
+
+        ytmusicapi's search drops this note, so it comes from one raw search
+        request. With *ignore_spelling*, as after "Search instead for", the
+        server can only suggest, so the note is "Did you mean". See
+        parse_search_correction for the shape.
+        """
+        from ytmusicapi.parsers.search import get_search_params
+
+        body: dict[str, Any] = {"query": query}
+        if ignore_spelling:
+            body["params"] = get_search_params(None, None, True)
+        try:
+            raw = await self._call(self.client._send_request, "search", body)
+        except Exception:
+            logger.exception("get_search_correction failed for query=%r", query)
+            return None
+        return parse_search_correction(raw, query)
 
     # ------------------------------------------------------------------
     # Library
@@ -807,6 +922,38 @@ class YTMusicService:
                 "get_watch_playlist failed for video=%r playlist=%r",
                 video_id,
                 playlist_id,
+            )
+            return []
+
+    async def get_queue_chips(self, video_id: str) -> list[dict[str, Any]]:
+        """The mix chips the web app shows above the radio of *video_id*, or [].
+
+        See parse_queue_chips for the shape. get_chip_tracks loads a chip's queue.
+        """
+        body = {**_WATCH_BODY, "videoId": video_id, "playlistId": "RDAMVM" + video_id}
+        try:
+            raw = await self._call(self.client._send_request, "next", body)
+        except Exception:
+            logger.exception("get_queue_chips failed for video=%r", video_id)
+            return []
+        return parse_queue_chips(raw)
+
+    async def get_chip_tracks(
+        self, video_id: str, playlist_id: str, params: str
+    ) -> list[dict[str, Any]]:
+        """The tracks of one Up next chip's queue for *video_id*, or [] on failure."""
+        from ytmusicapi.parsers.watch import parse_watch_playlist
+
+        body = {**_WATCH_BODY, "videoId": video_id, "playlistId": playlist_id}
+        if params:
+            body["params"] = params
+        try:
+            raw = await self._call(self.client._send_request, "next", body)
+            panel = _queue_renderer(raw).get("content", {}).get("playlistPanelRenderer", {})
+            return parse_watch_playlist(panel.get("contents", []))
+        except Exception:
+            logger.exception(
+                "get_chip_tracks failed for video=%r playlist=%r", video_id, playlist_id
             )
             return []
 

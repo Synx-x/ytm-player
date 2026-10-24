@@ -4,32 +4,39 @@ A left click on the player bar's cover or title opens it, and a second click
 goes back, as on music.youtube.com. The pane has the web app's three tabs:
 
 - Up next lists the queue from the playing track on, under "Playing from" and
-  the playlist name. Each row is a small cover, title over artist, and duration.
-  Click a row to play it. The Queue page keeps reordering and removal.
+  the playlist name, with Save to put the queue in a playlist. Each row is a
+  small cover, title over artist, and duration. Click a row to play it. The
+  Queue page keeps reordering and removal. A radio has mix chips (All,
+  Familiar, Discover ...) that swap the tracks after the playing one. Any
+  other queue ends with the Autoplay switch.
 - Lyrics shows the lyrics centred, the sung line bright, with their source.
 - Related lists the songs YouTube Music relates to the playing one.
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import TYPE_CHECKING, Any, cast
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, HorizontalScroll, Vertical, VerticalScroll
 from textual.events import Click
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Label, Static
 
 from ytm_player.config.keymap import Action
+from ytm_player.ui.icons import icon
 from ytm_player.ui.sidebars.lyrics_sidebar import LyricsSidebar
 from ytm_player.ui.theme import get_theme
 from ytm_player.ui.widgets.cover import Cover, track_thumbnail
-from ytm_player.utils.formatting import extract_artist, format_duration
+from ytm_player.utils.formatting import extract_artist, format_duration, normalize_tracks
 
 if TYPE_CHECKING:
     from ytm_player.app._base import YTMHostBase
+
+logger = logging.getLogger(__name__)
 
 # Seconds between checks for a track change. The bar has its own updates, and
 # this page only needs to follow them while it is showing.
@@ -150,8 +157,6 @@ class RelatedList(VerticalScroll):
         self.run_worker(self._load(video_id), group="related", exclusive=True)
 
     async def _load(self, video_id: str) -> None:
-        from ytm_player.utils.formatting import normalize_tracks
-
         ytmusic = getattr(self.app, "ytmusic", None)
         songs = await ytmusic.get_related_songs(video_id) if ytmusic else []
         if video_id != self._video_id:
@@ -193,6 +198,162 @@ class PaneTabs(Horizontal):
                 page.show_tab(widget.id.removeprefix("np-tab-"))
 
 
+def radio_seed(queue: Any) -> str:
+    """The video id a track radio started from, or "" when the queue is not one.
+
+    A track radio has no playlist behind it. Playlist radio keeps its playlist
+    as the context, and its seed carries no video id.
+    """
+    if queue is None or queue.current_context_id:
+        return ""
+    seeds = getattr(queue, "radio_seeds", None) or []
+    return (seeds[0].get("video_id") or seeds[0].get("videoId") or "") if seeds else ""
+
+
+def _autoplay_on(app: Any) -> bool:
+    settings = getattr(app, "settings", None)
+    return bool(settings.playback.autoplay) if settings is not None else True
+
+
+class AutoplayRow(Vertical):
+    """The switch that ends a queue that is not a radio: Autoplay, on or off."""
+
+    DEFAULT_CSS = """
+    AutoplayRow { height: 3; padding: 0 1; margin: 1 2 0 1; }
+    AutoplayRow > Horizontal { height: 1; }
+    AutoplayRow #autoplay-title { width: 1fr; }
+    AutoplayRow #autoplay-switch { width: auto; }
+    AutoplayRow #autoplay-switch:hover { text-style: underline; }
+    AutoplayRow .autoplay-note { color: $text-muted; }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Horizontal():
+            yield Static("Autoplay", id="autoplay-title")
+            yield Static("", id="autoplay-switch")
+        yield Static("Add similar content to the end of the queue", classes="autoplay-note")
+
+    def on_mount(self) -> None:
+        self.show_state()
+
+    def show_state(self) -> None:
+        on = _autoplay_on(self.app)
+        theme = get_theme()
+        switch = Text.assemble(
+            ("━━●" if on else "●━━", theme.primary if on else theme.muted_text),
+            ("  On" if on else "  Off", theme.foreground if on else theme.muted_text),
+        )
+        self.query_one("#autoplay-switch", Static).update(switch)
+
+    def on_click(self, event: Click) -> None:
+        if event.button != 1:
+            return
+        event.stop()
+        settings = getattr(self.app, "settings", None)
+        if settings is None:
+            return
+        settings.playback.autoplay = not settings.playback.autoplay
+        try:
+            settings.save()
+        except OSError:
+            logger.exception("Could not save the Autoplay setting")
+        self.show_state()
+        refill = getattr(self.app, "_refill_queue", None)
+        if settings.playback.autoplay and refill is not None:
+            refill()
+
+
+class QueueChips(HorizontalScroll):
+    """A radio's mix chips: All, Familiar, Discover, Deep cuts ... The picked one is filled.
+
+    A pick swaps the tracks after the playing one for that mix, as on the web.
+    The chips load once per radio, from the track it started from.
+    """
+
+    DEFAULT_CSS = """
+    QueueChips { height: 2; padding: 0 2; display: none; scrollbar-size: 0 0; }
+    QueueChips.visible { display: block; }
+    QueueChips > .np-chip { width: auto; height: 1; padding: 0 2; margin-right: 1;
+        background: $boost; }
+    QueueChips > .np-chip:hover { background: $primary 30%; }
+    QueueChips > .np-chip.-active { background: $foreground; color: $background; }
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.chips: list[dict[str, Any]] = []
+        self._seed = ""
+        self._key: tuple[int, str] | None = None
+
+    def follow(self) -> None:
+        """Load the chips when a new radio starts, and hide them for any other queue."""
+        queue = getattr(self.app, "queue", None)
+        if queue is None:
+            return
+        seed = radio_seed(queue)
+        key = (queue.generation, seed)
+        if key == self._key:
+            return
+        self._key = key
+        if seed == self._seed and seed:
+            return
+        self._seed = seed
+        self.chips = []
+        self.remove_children()
+        self.remove_class("visible")
+        if seed:
+            self.run_worker(self._load(seed), group="queue-chips", exclusive=True)
+
+    async def _load(self, seed: str) -> None:
+        ytmusic = getattr(self.app, "ytmusic", None)
+        chips = await ytmusic.get_queue_chips(seed) if ytmusic else []
+        if seed != self._seed or not chips:
+            return
+        self.chips = chips
+        await self.mount_all(
+            Static(chip["label"], id=f"np-chip-{index}", classes="np-chip")
+            for index, chip in enumerate(chips)
+        )
+        self._mark(next((i for i, c in enumerate(chips) if c.get("selected")), 0))
+        self.add_class("visible")
+
+    def _mark(self, index: int) -> None:
+        for position, widget in enumerate(self.query(".np-chip")):
+            widget.set_class(position == index, "-active")
+
+    def on_click(self, event: Click) -> None:
+        widget = event.widget
+        if widget is None or event.button != 1 or not (widget.id or "").startswith("np-chip-"):
+            return
+        event.stop()
+        index = int((widget.id or "").removeprefix("np-chip-"))
+        if 0 <= index < len(self.chips):
+            self._mark(index)
+            self.run_worker(self._pick(self.chips[index]), group="queue-chip-pick", exclusive=True)
+
+    async def _pick(self, chip: dict[str, Any]) -> None:
+        """Swap the tracks after the playing one for the mix of *chip*."""
+        app = cast("YTMHostBase", self.app)
+        seed = self._seed
+        ytmusic = getattr(app, "ytmusic", None)
+        raw = (
+            await ytmusic.get_chip_tracks(seed, chip["playlist_id"], chip["params"])
+            if ytmusic
+            else []
+        )
+        if seed != self._seed:
+            return
+        tracks = normalize_tracks(raw)
+        if not tracks:
+            app.notify(f"Could not load {chip['label']}.", severity="warning", timeout=3)
+            return
+        app.queue.replace_upcoming(tracks)
+        for refresh in ("_refresh_queue_page", "_prefetch_next_track"):
+            method = getattr(app, refresh, None)
+            if method is not None:
+                method()
+
+
 class UpNextList(VerticalScroll):
     """The queue from the playing track onward, rebuilt when the queue changes."""
 
@@ -217,7 +378,9 @@ class UpNextList(VerticalScroll):
             return
         tracks = list(queue.tracks)
         current = max(0, queue.real_index) if tracks else -1
-        signature = (queue.generation, len(tracks), current)
+        # A radio has no end, so only other queues end with the Autoplay switch.
+        autoplay_row = not radio_seed(queue)
+        signature = (queue.generation, queue.revision, len(tracks), current, autoplay_row)
         if signature == self._shown:
             return
         self._shown = signature
@@ -225,10 +388,13 @@ class UpNextList(VerticalScroll):
         if not tracks:
             self.mount(Label("Queue is empty.", classes="un-empty"))
             return
-        rows = [
+        rows: list[Widget] = [
             UpNextRow(track, index, index == current)
             for index, track in enumerate(tracks[current : current + _UP_NEXT_ROWS], start=current)
         ]
+        # The switch sits after the last track, so it shows only when the end is listed.
+        if autoplay_row and current + _UP_NEXT_ROWS >= len(tracks):
+            rows.append(AutoplayRow(id="np-autoplay"))
         self.mount(*rows)
 
 
@@ -245,7 +411,10 @@ class NowPlayingPage(Widget):
     /* Up next sits centred in its half, at most 90% of it, clear of the edges. */
     NowPlayingPage #np-right { width: 1fr; height: 1fr; align-horizontal: center; }
     NowPlayingPage #np-right > * { width: 100%; max-width: 90%; }
-    NowPlayingPage #np-source { height: 1; padding: 0 2; margin-top: 1; color: $text-muted; }
+    NowPlayingPage #np-head { height: 2; padding: 0 2; margin-top: 1; }
+    NowPlayingPage #np-source { width: 1fr; height: 1; color: $text-muted; }
+    NowPlayingPage #np-save { width: auto; height: 1; padding: 0 2; background: $boost; }
+    NowPlayingPage #np-save:hover { background: $primary 30%; }
     NowPlayingPage #np-switch { height: 1fr; }
     """
 
@@ -262,7 +431,10 @@ class NowPlayingPage(Widget):
                 yield Label("", id="np-artist")
             with Vertical(id="np-right"):
                 yield PaneTabs(id="np-tabs")
-                yield Label("", id="np-source")
+                with Horizontal(id="np-head"):
+                    yield Label("", id="np-source")
+                    yield Static(f"{icon('save')} Save", id="np-save")
+                yield QueueChips(id="np-chips")
                 with ContentSwitcher(initial="np-queue", id="np-switch"):
                     yield UpNextList(id="np-queue")
                     yield LyricsSidebar(id="np-lyrics", classes="in-pane")
@@ -282,7 +454,8 @@ class NowPlayingPage(Widget):
         for tab_key, _label, _target in PANE_TABS:
             self.query_one(f"#np-tab-{tab_key}").set_class(tab_key == key, "-active")
         self.query_one("#np-switch", ContentSwitcher).current = target
-        self.query_one("#np-source").display = key == "up-next"
+        for widget_id in ("#np-head", "#np-chips"):
+            self.query_one(widget_id).display = key == "up-next"
         if key == "lyrics":
             self.query_one("#np-lyrics", LyricsSidebar).activate()
         elif key == "related":
@@ -329,7 +502,26 @@ class NowPlayingPage(Widget):
         queue = getattr(app, "queue", None)
         return queue.current_track if queue is not None else None
 
+    def on_click(self, event: Click) -> None:
+        if event.widget is not None and event.widget.id == "np-save" and event.button == 1:
+            event.stop()
+            self.save_queue()
+
+    def save_queue(self) -> None:
+        """Save: add the whole queue to a playlist, as the web app's Up next does."""
+        from ytm_player.ui.popups.playlist_picker import PlaylistPicker
+
+        queue = getattr(self.app, "queue", None)
+        tracks = [t for t in (queue.tracks if queue is not None else ()) if t.get("video_id")]
+        if not tracks:
+            self.app.notify("Queue is empty.", timeout=2)
+            return
+        self.app.push_screen(
+            PlaylistPicker(video_ids=[t["video_id"] for t in tracks], tracks=tracks)
+        )
+
     def _follow(self) -> None:
+        self.query_one("#np-chips", QueueChips).follow()
         source = self._source_name()
         self.query_one("#np-source", Label).update(f"Playing from  {source}" if source else "")
         track = self._playing()
