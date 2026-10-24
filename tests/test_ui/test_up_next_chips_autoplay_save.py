@@ -10,7 +10,13 @@ from textual.app import App, ComposeResult
 
 from ytm_player.config.settings import Settings
 from ytm_player.services.queue import QueueManager
-from ytm_player.ui.pages.now_playing import AutoplayRow, NowPlayingPage, QueueChips, UpNextText
+from ytm_player.ui.pages.now_playing import (
+    AutoplayRow,
+    NowPlayingPage,
+    QueueChips,
+    UpNextList,
+    UpNextText,
+)
 from ytm_player.ui.popups.playlist_picker import PlaylistPicker
 from ytm_player.ui.widgets import cover
 
@@ -152,3 +158,21 @@ async def test_save_offers_the_whole_queue_to_a_playlist():
         await pilot.pause()
         assert len(app.pushed) == 1 and isinstance(app.pushed[0], PlaylistPicker)
         assert app.pushed[0].video_ids == ["v0", "v1", "v2"]
+
+
+async def test_a_second_refresh_replaces_the_rows_without_reusing_an_id():
+    """The interval refreshes every few seconds. A mount that ran before
+    remove_children finished raised DuplicateIds on np-autoplay."""
+    app = _Host(radio=False)
+    async with app.run_test(size=(160, 45)) as pilot:
+        await _settle(pilot, lambda: bool(app.query(AutoplayRow)))
+        rows = app.query_one(UpNextList)
+        assert len(app.query(AutoplayRow)) == 1
+        # A new revision changes the signature, so refresh_rows mounts again.
+        app.queue.add_multiple([_track("v3", "Deja Vu")])
+        await rows.refresh_rows()
+        await pilot.pause()
+        await rows.refresh_rows()
+        await pilot.pause()
+        assert len(app.query(AutoplayRow)) == 1
+        assert len(app.query(UpNextText)) == 4
